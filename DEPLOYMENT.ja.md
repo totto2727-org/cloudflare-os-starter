@@ -7,7 +7,7 @@
 
 ## 前提
 
-- Node.js 24.19 以上と pnpm 11.17 を通常の PATH で使用できること
+- Node.js 24.19 以上と `vp` を通常の PATH で使用できること
 - 対象の Cloudflare account ID
 - Workers、KV、R2、Browser Rendering、Dynamic Worker Loaders を利用できること
 - 既定のモデル一覧を使う場合は Workers AI と AI Gateway も利用できること
@@ -27,8 +27,8 @@
 ```sh
 cd app/cloudflare-os-starter
 git submodule update --init
-pnpm install
-pnpm --dir cloudflare-os install
+vp install
+vp -C cloudflare-os install
 ```
 
 submodule を `--remote` で更新したり、別の最新 main で置き換えたりしないでください。
@@ -99,17 +99,17 @@ KV/R2 は既定の自動作成、Workers AI は同一アカウントの binding 
 このリポジトリ内で実行します。
 
 ```sh
-pnpm exec wrangler login
-pnpm check
+vp exec wrangler login
+vp run check
 ```
 
-`pnpm check` は公式のテスト、ビルド、Wrangler dry-run を行います。
+`vp run check` は公式のテスト、ビルド、Wrangler dry-run を行います。
 placeholder が残っている場合は停止するので、設定を修正してから再実行してください。
 
 確認が成功したら、本人が本番デプロイを実行します。
 
 ```sh
-pnpm deploy
+vp run deploy
 ```
 
 既定では Error Reporter、Context、Scheduler、Custom Gatekeeper、Workshop、Router の六つの Worker を順番にデプロイします。
