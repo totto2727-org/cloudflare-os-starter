@@ -1,7 +1,8 @@
 {
   // Cloudflare account that owns every Worker and provisioned resource.
-  // Find it: https://developers.cloudflare.com/fundamentals/account/find-account-and-zone-ids/
-  "accountId": "<CLOUDFLARE_ACCOUNT_ID>",
+  // Source: user-confirmed account ID and totto2727-org/monorepo
+  // infra/cloudflare/README.md, ESC environment cloudflare/production.
+  "accountId": "5643a837ef66765e7881c0831a36ebed",
 
   // The deployment's public origin, used for PUBLIC_BASE_URL and to scope Context data.
   // null derives it from workers.router.route.customDomain.
@@ -16,24 +17,24 @@
     // Owns the public URL and serves the frontend. Proxies /api and /blueprint-screenshot to the
     // Workshop, and /gatekeeper/<name> to the matching Gatekeeper.
     "router": {
-      "name": "<ROUTER_WORKER_NAME>",
+      "name": "cloudflare-os-router",
 
       // Production: use a hostname in an active Cloudflare zone. Wrangler creates DNS and TLS.
       // Evaluation: replace this with "route": { "workersDev": true } and set publicBaseUrl above.
       // https://developers.cloudflare.com/workers/configuration/routing/custom-domains/
-      "route": { "customDomain": "os.example.com" }
+      "route": { "customDomain": "cloudflare.totto2727.dev" }
     },
 
     // The Workshop backend. No public route: the router reaches it over a service binding.
-    "workshop": { "name": "<WORKSHOP_WORKER_NAME>" },
-    "context": { "name": "<CONTEXT_WORKER_NAME>" },
+    "workshop": { "name": "cloudflare-os-workshop" },
+    "context": { "name": "cloudflare-os-context" },
 
     // The Scheduler Gatekeeper, which gives agents scheduled and recurring work. Ambient like
     // the Context Gatekeeper
-    "scheduler": { "name": "<SCHEDULER_WORKER_NAME>" },
+    "scheduler": { "name": "cloudflare-os-scheduler" },
 
-    "customGatekeeper": { "name": "<CUSTOM_GATEKEEPER_WORKER_NAME>" },
-    "errorReporter": { "name": "<ERROR_REPORTER_WORKER_NAME>" }
+    "customGatekeeper": { "name": "cloudflare-os-custom-gatekeeper" },
+    "errorReporter": { "name": "cloudflare-os-error-reporter" }
   },
 
   // This starter deploys Cloudflare Access mode. Cloudflare OS also supports built-in password
@@ -42,9 +43,13 @@
   // "admins" gates /admin in every sign-in method.
   // Reference: docs/customization.md#sign-in-methods
   "access": {
-    "issuer": "https://<TEAM_NAME>.cloudflareaccess.com",
-    "audience": "<ACCESS_AUDIENCE>",
-    "admins": ["<ADMIN_EMAIL>"]
+    // Source: the Access Team domain provided by the user.
+    "issuer": "https://totto2727.cloudflareaccess.com",
+    // Source: user-provided cloudflareOsAccessAudience output, paired with
+    // cloudflareOsAccessDomain = cloudflare.totto2727.dev.
+    "audience": "a03b447e5b1f0875d39c832e3c5a1677677e8e900200bf820508fdcfcca8c1cb",
+    // Source: the email claim in the user's Access identity, not the SAML group IDs.
+    "admins": ["kaihatu.totto2727@gmail.com"]
   },
 
   // Model catalog served through Cloudflare AI Gateway. Enabled by default: the Workshop reaches
@@ -54,14 +59,17 @@
   "aiGateway": {
     "enabled": true,
 
-    // Your account's AI Gateway. "default" is the one Cloudflare creates for the account.
-    // Migrating from the hosted deploy? Use the gateway that flow created: "<instance>-ai"
-    // (e.g. "cloudflareos-ai"), named after your instance. See docs/migrate-from-hosted.md.
-    "name": "default",
+    // Source: totto2727-org/monorepo infra/cloudflare/src/ai-gateway.ts
+    // sets aiGatewayId = config.resourceName('ai-gateway').
+    // src/config.ts maps stack production to prod and prefixes names with iac-.
+    // Pulumi.production.yaml selects ESC cloudflare/production.
+    // This links to the infra-managed gateway, not the starter's "default" gateway.
+    "name": "iac-prod-ai-gateway",
 
-    // null reuses the top-level accountId. Set only if the gateway lives in another account --
-    // that requires CF_AI_GATEWAY_API_TOKEN, since the binding cannot reach across accounts.
-    "accountId": null,
+    // Source: infra uses config.accountID from cloudflare/production, confirmed by the user.
+    // Explicitly records the gateway's account; same-account WORKERS_AI remains pre-authenticated.
+    // A different account would require CF_AI_GATEWAY_API_TOKEN.
+    "accountId": "5643a837ef66765e7881c0831a36ebed",
 
     // "cloudflare" is Workers AI, which needs no key of your own. anthropic/openai need keys
     // stored on the gateway; "google" additionally requires CF_AI_GATEWAY_API_TOKEN.
@@ -75,7 +83,8 @@
 
     // null: Wrangler provisions and remembers a KV namespace on first deploy.
     // string: bind an existing namespace by ID.
-    "kvNamespaceId": null
+    // Existing namespace: cloudflare-os-context-context-collections, verified with Wrangler.
+    "kvNamespaceId": "cc288190a12943ae92c3007fe43d5b0d"
 
     // Optional Git-compatible storage for Context collections. To enable it, add a comma after
     // kvNamespaceId and uncomment this object. Requires Artifacts account access.
@@ -89,8 +98,8 @@
   // Displayed to agents when the example custom integration is enabled in /admin.
   // Reference: docs/customization.md#custom-gatekeepers
   "customGatekeeper": {
-    "name": "<ORGANIZATION_DISPLAY_NAME>",
-    "message": "<ORGANIZATION_GUIDANCE>"
+    "name": "totto2727",
+    "message": "Cloudflare OS deployment at https://cloudflare.totto2727.dev."
   },
 
   // Explicit backend issue reports go to a private Worker that emits structured console errors.
@@ -105,9 +114,10 @@
   // null values use Wrangler automatic provisioning. Set IDs/names to reuse owned resources.
   // https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning
   "resources": {
-    "blueprintsKvNamespaceId": null,
-    "avatarsKvNamespaceId": null,
-    "blueprintContentBucket": null
+    // Existing namespaces and bucket verified with Wrangler in the configured account.
+    "blueprintsKvNamespaceId": "61bc53207ef4414694295d0dd700968b",
+    "avatarsKvNamespaceId": "821f16294b9c4f8a833589dba2b288a2",
+    "blueprintContentBucket": "cloudflare-os-workshop-blueprint-content"
   },
 
   // Structured custom logs stay enabled. Invocation logs and traces are separate volume controls.
