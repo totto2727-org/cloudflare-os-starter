@@ -83,7 +83,8 @@
 
     // null: Wrangler provisions and remembers a KV namespace on first deploy.
     // string: bind an existing namespace by ID.
-    "kvNamespaceId": null
+    // Existing namespace: cloudflare-os-context-context-collections, verified with Wrangler.
+    "kvNamespaceId": "cc288190a12943ae92c3007fe43d5b0d"
 
     // Optional Git-compatible storage for Context collections. To enable it, add a comma after
     // kvNamespaceId and uncomment this object. Requires Artifacts account access.
@@ -113,9 +114,10 @@
   // null values use Wrangler automatic provisioning. Set IDs/names to reuse owned resources.
   // https://developers.cloudflare.com/workers/wrangler/configuration/#automatic-provisioning
   "resources": {
-    "blueprintsKvNamespaceId": null,
-    "avatarsKvNamespaceId": null,
-    "blueprintContentBucket": null
+    // Existing namespaces and bucket verified with Wrangler in the configured account.
+    "blueprintsKvNamespaceId": "61bc53207ef4414694295d0dd700968b",
+    "avatarsKvNamespaceId": "821f16294b9c4f8a833589dba2b288a2",
+    "blueprintContentBucket": "cloudflare-os-workshop-blueprint-content"
   },
 
   // Structured custom logs stay enabled. Invocation logs and traces are separate volume controls.

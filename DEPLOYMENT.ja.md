@@ -52,7 +52,7 @@ submodule を `--remote` で更新したり、別の最新 main で置き換え�
 | `access.admins` | `kaihatu.totto2727@gmail.com` に設定済み |
 | `customGatekeeper.name` / `message` | `totto2727` と公開 URL の案内文に設定済み。必要に応じて変更 |
 | `aiGateway` | 同一アカウントの `iac-prod-ai-gateway`、provider は `cloudflare` に設定済み |
-| `context.kvNamespaceId` / `resources.*` | 新規なら `null`。既存データを再利用する場合だけ正しい ID・bucket 名を指定 |
+| `context.kvNamespaceId` / `resources.*` | Wrangler で確認した既存 ID・bucket 名に設定済み。別の新規環境で自動作成する場合だけ `null` |
 
 設定済みの Worker 名は以下のとおりです。
 
@@ -90,9 +90,19 @@ infra に Gateway が定義されていることと、実際にデプロイ済�
 AUD は Application ごとに発行される値なので、Team domain、Account ID、SAML group ID、別アプリの AUD から推測しません。
 Application を再作成した場合は、その新しい AUD を本人が確認して設定へ反映してください。
 
-新規構築では KV/R2 の ID やモデル API key を追加で用意する必要はありません。
-KV/R2 は既定の自動作成、Workers AI は同一アカウントの binding を使用します。
-既存データを引き継ぐ場合のリソース ID、追加のモデルプロバイダー、Artifacts などを使う場合の設定だけが別途必要です。
+この環境では作成済みの KV/R2 を再利用し、接続先を `deployment.jsonc` に明示的に保存しています。
+Wrangler の `kv namespace list` と `r2 bucket list` で対象アカウントの存在を確認した値は次のとおりです。
+
+| 設定 | 既存リソース名 | ID または bucket 名 |
+| --- | --- | --- |
+| `context.kvNamespaceId` | `cloudflare-os-context-context-collections` | `cc288190a12943ae92c3007fe43d5b0d` |
+| `resources.blueprintsKvNamespaceId` | `cloudflare-os-workshop-blueprints` | `61bc53207ef4414694295d0dd700968b` |
+| `resources.avatarsKvNamespaceId` | `cloudflare-os-workshop-avatars` | `821f16294b9c4f8a833589dba2b288a2` |
+| `resources.blueprintContentBucket` | `cloudflare-os-workshop-blueprint-content` | `cloudflare-os-workshop-blueprint-content` |
+
+別の新規環境を自動作成する場合は、ストレージ設定を `null` にして Wrangler の自動作成を利用できます。
+Workers AI は同一アカウントの binding を使用します。
+追加のモデルプロバイダーや Artifacts などを使う場合だけ、別途設定が必要です。
 
 ## 3. 本人が実行する認証・検証・デプロイ
 
@@ -114,6 +124,7 @@ vp run deploy
 
 既定では Error Reporter、Context、Scheduler、Custom Gatekeeper、Workshop、Router の六つの Worker を順番にデプロイします。
 ストレージ設定が `null` なら Wrangler が三つの KV namespace と一つの R2 bucket を自動作成します。
+現在の設定は既存リソースを指定しているため、それらを再利用します。
 Router だけが公開ルートを持ち、ほかの Worker は service binding からアクセスされます。
 この操作は Cloudflare のリソース変更と課金を伴う可能性があります。
 
