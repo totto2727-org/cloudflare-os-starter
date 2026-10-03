@@ -37,9 +37,9 @@ submodule を `--remote` で更新したり、別の最新 main で置き換え�
 ## 2. Cloudflare Access と設定
 
 1. `totto2727.dev` の Cloudflare zone と、既存の `cloudflare.totto2727.dev` DNS record との衝突がないことを確認します。
-2. `cloudflare.totto2727.dev` の self-hosted Access application を作成し、本人や許可するユーザーだけを Allow policy に含めます。
-3. この application の AUD tag を確認します。Team domain と管理者メールは設定済みです。
-4. [deployment.jsonc](deployment.jsonc) の `access.audience` をその AUD に置き換えます。新規デプロイで残る必須の設定値はこれだけです。
+2. `cloudflare.totto2727.dev` の self-hosted Access application を確認し、本人や許可するユーザーだけが Allow policy に含まれることを確認します。
+3. この application の AUD tag が、本人から提示された `cloudflareOsAccessAudience` と一致することを確認します。
+4. [deployment.jsonc](deployment.jsonc) の `access.audience` はその AUD に設定済みです。Team domain と管理者メールも設定済みで、新規構築に必須の placeholder は残っていません。
 
 | 設定 | 入力・確認する内容 |
 | --- | --- |
@@ -48,7 +48,7 @@ submodule を `--remote` で更新したり、別の最新 main で置き換え�
 | `workers.router.route.customDomain` | `cloudflare.totto2727.dev` に設定済み |
 | `publicBaseUrl` | 独自ドメインなら `null` のままで自動導出 |
 | `access.issuer` | `https://totto2727.cloudflareaccess.com` に設定済み |
-| `access.audience` | 対象 Access application の AUD tag |
+| `access.audience` | `a03b447e5b1f0875d39c832e3c5a1677677e8e900200bf820508fdcfcca8c1cb` に設定済み |
 | `access.admins` | `kaihatu.totto2727@gmail.com` に設定済み |
 | `customGatekeeper.name` / `message` | `totto2727` と公開 URL の案内文に設定済み。必要に応じて変更 |
 | `aiGateway` | 同一アカウントの `iac-prod-ai-gateway`、provider は `cloudflare` に設定済み |
@@ -74,8 +74,8 @@ submodule を `--remote` で更新したり、別の最新 main で置き換え�
 Worker 名、公開 URL、ストレージ ID はデータの帰属に関わるため、公開後は安易に変更しないでください。
 `deployment.jsonc` は Git 管理対象なので、本人が確定した account ID、Access issuer・AUD・管理者メール、既存ストレージの接続先を入力した変更はコミットして保存します。
 API token・署名シークレットなどの秘密情報はこの設定へ含めません。
-公開 hostname、六つの Worker 名、Account ID、Access issuer・管理者メール、AI Gateway、Custom Gatekeeper の表示値は設定済みです。
-残る有効な placeholder は `access.audience` だけです。
+公開 hostname、六つの Worker 名、Account ID、Access issuer・AUD・管理者メール、AI Gateway、Custom Gatekeeper の表示値は設定済みです。
+必須の placeholder は残っていませんが、設定値の記録だけでは Cloudflare 側の利用権限や Access policy の正しさを保証しません。
 
 ### infra から参照した値と AUD
 
@@ -85,11 +85,10 @@ Account ID は infra の `cloudflare/production` 設定と本人から提示さ�
 設定ファイルの各値にも由来をコメントとして記載しています。
 infra に Gateway が定義されていることと、実際にデプロイ済みで利用できることは別なので、モデルを使用する前に infra の production デプロイが完了していることを確認してください。
 
-確認時点の [infra/cloudflare/index.ts](https://github.com/totto2727-org/monorepo/blob/526f38ff36956d5b46cdc82f09e8edba2efcd639/infra/cloudflare/index.ts) は Access Group・Policy・Identity Provider と AI Gateway を管理していますが、`cloudflare.totto2727.dev` の Access Application やその AUD の出力はありません。
-そのため、現状の infra ソースから AUD は取得できません。
+当初確認した [infra/cloudflare/index.ts](https://github.com/totto2727-org/monorepo/blob/526f38ff36956d5b46cdc82f09e8edba2efcd639/infra/cloudflare/index.ts) には Access Application やその AUD の出力がありませんでした。
+その後、本人から `cloudflareOsAccessDomain = "cloudflare.totto2727.dev"` と `cloudflareOsAccessAudience = "a03b447e5b1f0875d39c832e3c5a1677677e8e900200bf820508fdcfcca8c1cb"` の出力が提示されたため、その domain と一致する Router の `access.audience` に保存しています。
 AUD は Application ごとに発行される値なので、Team domain、Account ID、SAML group ID、別アプリの AUD から推測しません。
-今後この Access Application も infra で管理し、その AUD を stack output として公開すれば、その出力を `access.audience` に保存できます。
-現在は Cloudflare Zero Trust の対象 Application に表示される Application Audience (AUD) Tag を使用してください。
+Application を再作成した場合は、その新しい AUD を本人が確認して設定へ反映してください。
 
 新規構築では KV/R2 の ID やモデル API key を追加で用意する必要はありません。
 KV/R2 は既定の自動作成、Workers AI は同一アカウントの binding を使用します。

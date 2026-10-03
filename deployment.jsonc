@@ -45,10 +45,9 @@
   "access": {
     // Source: the Access Team domain provided by the user.
     "issuer": "https://totto2727.cloudflareaccess.com",
-    // Use the AUD of the application protecting cloudflare.totto2727.dev.
-    // monorepo/infra currently defines a Group/Policy/IdP, not this application.
-    // SAML groups, the Team domain, and the account ID cannot substitute for its AUD.
-    "audience": "<ACCESS_AUDIENCE>",
+    // Source: user-provided cloudflareOsAccessAudience output, paired with
+    // cloudflareOsAccessDomain = cloudflare.totto2727.dev.
+    "audience": "a03b447e5b1f0875d39c832e3c5a1677677e8e900200bf820508fdcfcca8c1cb",
     // Source: the email claim in the user's Access identity, not the SAML group IDs.
     "admins": ["kaihatu.totto2727@gmail.com"]
   },
