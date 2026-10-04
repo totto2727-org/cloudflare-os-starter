@@ -9,21 +9,39 @@ Deployment instructions for this configured environment are in [DEPLOYMENT.ja.md
 | Component | Snapshot |
 | --- | --- |
 | Official starter baseline | [`3d211477ad009e13a98d863d843e5c12a29ad02b`](https://github.com/cloudflare/cloudflare-os-starter/commit/3d211477ad009e13a98d863d843e5c12a29ad02b) |
-| Fork deployment snapshot | [`07047a6adb6b0b55ad44ffe5bda707bbd9f3bc2f`](https://github.com/totto2727-org/cloudflare-os-starter/commit/07047a6adb6b0b55ad44ffe5bda707bbd9f3bc2f) |
+| Reviewed fork snapshot | [`a4a247102f215aa1021730ef8d90e907538f31ec`](https://github.com/totto2727-org/cloudflare-os-starter/commit/a4a247102f215aa1021730ef8d90e907538f31ec) |
 | Cloudflare OS runtime gitlink in both snapshots | [`6478a1448a11524e2f7c2575ad66fab0bc47c433`](https://github.com/cloudflare/cloudflare-os/commit/6478a1448a11524e2f7c2575ad66fab0bc47c433) |
 
 The summary below compares the two starter trees directly, not a moving `main` branch or a merge-base-only diff.
-The fork deployment snapshot precedes this summary and its README discovery link, so those documentation additions are not part of that immutable comparison.
-The comparison contains exactly two changed files: modified `deployment.jsonc` and added `DEPLOYMENT.ja.md`.
+The comparison contains all four changed paths, including documentation:
+
+| Status | Path | Difference and purpose |
+| --- | --- | --- |
+| Added | `DEPLOYMENT.ja.md` | Documents this configured environment and the existing operator-run deployment workflow. |
+| Modified | `README.md` | Adds a discovery link to this fork's divergence record without changing the official deployment instructions. |
+| Modified | `deployment.jsonc` | Selects the owner's deployment account, services, hostname, Access configuration, AI Gateway, existing storage, and integration display text. |
+| Added | `docs/upstream-differences.md` | Records this repository's upstream baseline, complete differences, operational implications, and maintenance rules. |
+
+The reviewed snapshot already contains the README link and this record.
+Later documentation-only revisions, including corrections to this record, remain part of the complete fork difference and must not be excluded from the inventory.
 
 Reproduce the comparison locally when both commits are available:
 
 ```sh
-git diff --name-status 3d211477ad009e13a98d863d843e5c12a29ad02b 07047a6adb6b0b55ad44ffe5bda707bbd9f3bc2f
-git diff 3d211477ad009e13a98d863d843e5c12a29ad02b 07047a6adb6b0b55ad44ffe5bda707bbd9f3bc2f -- deployment.jsonc DEPLOYMENT.ja.md
+git diff --name-status 3d211477ad009e13a98d863d843e5c12a29ad02b a4a247102f215aa1021730ef8d90e907538f31ec
+git diff 3d211477ad009e13a98d863d843e5c12a29ad02b a4a247102f215aa1021730ef8d90e907538f31ec
 git ls-tree 3d211477ad009e13a98d863d843e5c12a29ad02b cloudflare-os
-git ls-tree 07047a6adb6b0b55ad44ffe5bda707bbd9f3bc2f cloudflare-os
+git ls-tree a4a247102f215aa1021730ef8d90e907538f31ec cloudflare-os
 ```
+
+For a later revision, compare the same baseline with `HEAD` to include every committed path, including this record, without embedding the record's own commit SHA:
+
+```sh
+git diff --name-status 3d211477ad009e13a98d863d843e5c12a29ad02b HEAD
+git diff 3d211477ad009e13a98d863d843e5c12a29ad02b HEAD
+```
+
+During pre-commit review, omit `HEAD` from those two commands to include tracked working-tree changes as well, and inspect `git status --short` for newly added untracked paths.
 
 ## Intentional deployment differences
 
@@ -78,7 +96,7 @@ The guide's statements about previously confirmed resource existence are recorde
 - The `cloudflare-os` submodule gitlink is identical in both starter snapshots.
 - [`.gitmodules`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/.gitmodules) still points to `https://github.com/cloudflare/cloudflare-os.git`, not a user-owned runtime fork.
 - The runtime source pinned by that gitlink is therefore unchanged in this comparison.
-- `scripts/`, `packages/`, `package.json`, dependency manifests and lockfile, and the existing official documentation are unchanged in the compared snapshots.
+- `scripts/`, `packages/`, `package.json`, dependency manifests and lockfile, and the existing official documentation other than the README discovery link are unchanged in the compared snapshots.
 - The six-Worker architecture, router-owned public route, private service bindings, Access-mode frontend build, AI Gateway binding transport, storage binding support, validation, dry-run, deployment order, and generated-file cleanup already belong to the official starter.
 
 The authoritative implementation for those existing behaviors is the official [`scripts/deploy.ts`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/scripts/deploy.ts), alongside the official [`README.md`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/README.md) and [`docs/customization.md`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/docs/customization.md).
@@ -93,13 +111,13 @@ This rule covers source and scripts, deployment configuration, documentation, de
 
 For each update:
 
-1. Identify the exact official starter baseline and a committed fork implementation snapshot, using full immutable SHAs and source links rather than branch names alone.
+1. Identify the exact official starter baseline and a committed complete fork snapshot, using full immutable SHAs and source links rather than branch names alone.
 2. Compare the complete starter trees and inspect every changed path before revising the summary.
 3. Describe each retained difference, why it exists, its observable effect, and any storage, trust, compatibility, or operational consequence.
 4. Distinguish inherited upstream behavior from fork additions, and record removed or upstreamed differences rather than continuing to claim them as customizations.
 5. Compare both the runtime gitlink and `.gitmodules` separately, updating runtime provenance only when the actual pin or source URL changes.
 6. Preserve intentional environment and storage selections during upstream synchronization, and follow the official [upgrade checklist](customization.md#upgrade) for a runtime pin change.
-7. State which snapshot excludes documentation-only additions when necessary, so the comparison remains reproducible without a self-referential commit SHA.
+7. Include documentation-only additions and revisions, including this record and its README link, in the complete path inventory; distinguish the immutable reviewed snapshot from later `HEAD` or working-tree changes without requiring a self-referential commit SHA.
 
 Keep this file as maintained fork documentation, not a task log, deployment success report, or ToDo ledger.
 Never include API tokens, signing secrets, cookies, or other credential values.
