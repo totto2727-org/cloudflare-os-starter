@@ -28,6 +28,8 @@
 
 [Deploy](#deploy) and [Customization](#customization) expand each step. Everything else on this page is optional reading.
 
+For this fork's intentional changes and update rules, see [Fork differences from upstream](docs/upstream-differences.md).
+
 ## Overview
 
 This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release without modifying the upstream source.
