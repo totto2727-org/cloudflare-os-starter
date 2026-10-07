@@ -26,7 +26,8 @@ A scoped `@vitest/browser-preview` override likewise prevents Vite Plus's option
 The redundant root Worker pool dependency is removed, leaving it in the custom Gatekeeper package that actually owns Worker tests.
 `pnpm peers check` still reports Vite Plus's private Vite alias version (`1.1.0` rather than its underlying Vite 8 version) against bundled Vitest 5's Vite peer, plus an unused optional `@vitest/ui` 5 peer against Vitest 4.
 The supported checks are non-UI standalone Vitest 4 suites and Vite Plus lint, not Vitest UI or Vite Plus's bundled Worker test runner.
-The package manager's release-age exceptions are limited to the specifically requested Vite Plus 1.1.0 toolchain packages.
+The starter does not exempt the Vite Plus 1.1.0 toolchain from the package manager's default release-age policy.
+Fresh resolution and lockfile policy verification must wait until those releases meet the configured age threshold, without lowering that threshold or changing dependency ranges.
 
 Worker tests continue to use the standalone catalog `vitest: ^4.1.10` and `@cloudflare/vitest-pool-workers: ^0.20.2`, never `vp test` or `vite-plus/test`.
 Even the newer Worker pool `0.22.0` [declares Vitest, runner, and snapshot peers of `^4.1.0`](https://registry.npmjs.org/@cloudflare/vitest-pool-workers/0.22.0), whereas [Vite Plus `1.1.0` bundles Vitest `5.0.3`](https://registry.npmjs.org/vite-plus/1.1.0).
