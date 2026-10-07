@@ -8,7 +8,9 @@ packages:
 # that resolve here rather than in the submodule -- without these entries `pnpm install` fails
 # outright.
 #
-# Keep every shared entry byte-identical to the submodule's when bumping the gitlink. Drift is
+# Keep every runtime and test entry byte-identical to the submodule's when bumping the gitlink.
+# The starter's vite-plus entry is intentionally newer: it orchestrates tasks and lint, not the
+# upstream runtime build or the standalone Vitest 4 worker tests. Drift in runtime entries is
 # silent: the starter and the submodule install separately, so a different capnweb range gives the
 # tree two copies, and a stub minted by one is unserialisable by the other's session
 # (`TypeError: Cannot serialize value: [object RpcStub]`). A deduped dev machine hides it; the
@@ -26,15 +28,18 @@ catalog:
   # Exact, not ranged: the transform has to stay on esbuild. Oxc does not lower the Stage-3
   # decorators capnweb-validate's `@validateRpc()` relies on (cloudflare/workers-sdk#12626).
   vite: 7.3.6
-  vite-plus: ^0.2.8
+  vite-plus: ^1.1.0
   vitest: ^4.1.10
   wrangler: ^4.119.0
 
 overrides:
-  # Vitest peers can resolve vite@latest, so the version is pinned rather than ranged. Points at the
-  # catalog so this and the manifests can't disagree: a catalog only covers what a workspace
-  # manifest declares itself, and the override is what reaches vite as somebody else's peer.
-  vite: "catalog:"
+  # Preserve Vite 7 for standalone Vitest 4 and its mocker, including their peer resolution.
+  # Do not override Vite+ 1's private Vite core or its bundled Vitest 5: those are toolchain
+  # internals, not the decorator-dependent Worker transform used by the tasks below.
+  'vitest@4>vite': "catalog:"
+  '@vitest/mocker@4>vite': "catalog:"
+  # Vite+ installs browser-preview 5, which must not satisfy standalone Vitest 4's optional peer.
+  'vitest@4>@vitest/browser-preview': 4.1.10
   # Arrives as an optional vite/vitest peer resolved to `latest`; pinned to the same release the
   # submodule pins so the two installs agree.
   '@types/node': 26.1.0
@@ -46,3 +51,15 @@ allowBuilds:
   protobufjs: true
   sharp: true
   workerd: true
+
+minimumReleaseAgeExclude:
+  - '@voidzero-dev/vite-plus-core@1.1.0'
+  - '@voidzero-dev/vite-plus-darwin-arm64@1.1.0'
+  - '@voidzero-dev/vite-plus-darwin-x64@1.1.0'
+  - '@voidzero-dev/vite-plus-linux-arm64-gnu@1.1.0'
+  - '@voidzero-dev/vite-plus-linux-arm64-musl@1.1.0'
+  - '@voidzero-dev/vite-plus-linux-x64-gnu@1.1.0'
+  - '@voidzero-dev/vite-plus-linux-x64-musl@1.1.0'
+  - '@voidzero-dev/vite-plus-win32-arm64-msvc@1.1.0'
+  - '@voidzero-dev/vite-plus-win32-x64-msvc@1.1.0'
+  - vite-plus@1.1.0

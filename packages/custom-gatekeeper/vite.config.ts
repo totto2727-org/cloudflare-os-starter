@@ -1,3 +1,6 @@
+// Vite+ 1 per-package settings. The root pnpm build/test scripts bypass these tasks until the
+// pinned runtime's legacy task graph is upgraded, because vp loads every workspace config.
+// These cache definitions retain the exclusions for that future upgrade.
 // Vite+ per-package settings. `vitest.config.ts` beside this file is vitest's own config (vitest
 // prefers it over this one); this file exists only to declare the `build` and `test` tasks that
 // `vp run` executes.
@@ -29,13 +32,17 @@ export default {
     tasks: {
       build: {
         command: 'tsc',
-        input: [{ auto: true }, ownDist],
-        output: ['dist/**'],
+        cache: {
+          input: [{ auto: true }, ownDist],
+          output: ['dist/**'],
+        },
       },
       test: {
         command: 'vitest run',
-        input: [{ auto: true }, ownDist, ...vitestScratch],
-        output: [{ auto: true }, ownDist, ...vitestScratch],
+        cache: {
+          input: [{ auto: true }, ownDist, ...vitestScratch],
+          output: [{ auto: true }, ownDist, ...vitestScratch],
+        },
       },
     },
   },

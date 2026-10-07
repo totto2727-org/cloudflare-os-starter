@@ -569,8 +569,12 @@ test("never lets a deploy replay a cached build artifact", () => {
   assert.ok(commands.length > 0, "expected at least one build command");
   for (const { args } of commands) {
     const command = args.join(" ");
-    // `pnpm --filter <pkg> build` cannot see a Vite+ task, and two of the three submodule targets
-    // are now tasks rather than scripts. `vp run` runs both.
+    if (args[0] === "--filter") {
+      assert.ok(["custom-gatekeeper", "error-reporter"].includes(args[1]), command);
+      assert.deepEqual(args, ["--filter", args[1], "exec", "tsc"]);
+      continue;
+    }
+    // Submodule builds retain their own task runner and must explicitly bypass its cache.
     assert.ok(command.includes("vp run"),
       `build step does not go through vp run: ${command}`);
     assert.ok(command.includes("--no-cache"),
@@ -580,6 +584,19 @@ test("never lets a deploy replay a cached build artifact", () => {
     // flag reaches `tsc` as an unknown option instead of reaching vp.
     assert.ok(args.indexOf("--no-cache") < args.indexOf("run") + 4,
       `--no-cache must precede the task name, not follow it: ${command}`);
+  }
+});
+
+test("keeps starter checks outside the pinned runtime's legacy Vite+ task graph", async () => {
+  const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
+  assert.equal(manifest.scripts.build, "pnpm -r --filter '!cloudflare-os-starter' exec tsc");
+  assert.equal(manifest.scripts.test,
+    "node --test 'scripts/**/*.test.ts' && pnpm -r --filter '!cloudflare-os-starter' --if-present run test:run");
+  for (const pkg of ["custom-gatekeeper", "error-reporter"]) {
+    const owned = JSON.parse(await readFile(
+      new URL(`../packages/${pkg}/package.json`, import.meta.url), "utf8"));
+    assert.match(owned.scripts["test:run"], /^vitest run(?: |$)/);
+    assert.equal(owned.devDependencies.vitest, "catalog:");
   }
 });
 

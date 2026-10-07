@@ -123,6 +123,9 @@ The complete control reference and recipes live in [Customization](docs/customiz
 
 ## Operations and upgrades
 
+This fork's starter toolchain changes and unchanged runtime pin are recorded in [Upstream differences](docs/upstream-differences.md).
+Builds and tests use uncached pnpm orchestration because Vite Plus 1 cannot load the pinned runtime's legacy task graph, while lint uses Vite Plus 1.
+
 - Stream production events with [`wrangler tail`](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).
 - Roll a Worker back from its dashboard deployment history or with [`wrangler rollback`](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/).
