@@ -25,7 +25,7 @@
 既に依存関係が揃っている場合、インストールを繰り返す必要はありません。
 
 ```sh
-cd app/cloudflare-os-starter
+cd fork/app/cloudflare-os
 git submodule update --init
 vp install
 vp -C cloudflare-os install
