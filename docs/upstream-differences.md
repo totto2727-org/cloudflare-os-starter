@@ -89,7 +89,7 @@ Worker names are service identities, and the unchanged deployment implementation
 [DEPLOYMENT.ja.md](../DEPLOYMENT.ja.md) adds Japanese instructions for this configured environment, including dependency preparation, Access checks, configuration provenance, storage reuse, operator-run validation and deployment, and post-deployment checks.
 It presents the existing workflow through `vp`, including `vp install`, `vp -C cloudflare-os install`, `vp run check`, and `vp run deploy`.
 These are documentation additions, not newly implemented package scripts, deployment logic, or runtime features.
-The workspace checkout is located at `fork/app/cloudflare-os/`.
+The workspace checkout is located at `fork/app/cloudflare-os-starter/`.
 The guide's working-directory command follows that placement without changing the upstream toolchain or runtime.
 The guide's statements about previously confirmed resource existence are recorded provenance, not a fresh remote verification by this comparison.
 
