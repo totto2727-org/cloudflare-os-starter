@@ -35,6 +35,9 @@ importers:
 
   .:
     devDependencies:
+      '@totto2727/gitignore-patterns':
+        specifier: npm:@jsr/totto2727__gitignore-patterns@^0.1.0
+        version: '@jsr/totto2727__gitignore-patterns@0.1.0'
       '@types/node':
         specifier: ^26.1.0
         version: 26.1.0
@@ -573,6 +576,9 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.9':
     resolution: {integrity: sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ==}
+
+  '@jsr/totto2727__gitignore-patterns@0.1.0':
+    resolution: {integrity: sha512-itNdfOsyHhLqgqTpj7DKa8qra36eR0P8k+R2t/KSbPLQCJyml5pfDJIuew1zOFpCVTb6Xw2vNzj8uHIcx4Xw5g==, tarball: https://npm.jsr.io/~/11/@jsr/totto2727__gitignore-patterns/0.1.0.tgz}
 
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     resolution: {integrity: sha512-oTXEIha4SsuXdTA4Iyskj0kpdx2yVXdhd75c2v3xGrHFfVMsbhTPZU/nMPL4sWKo4pBHm3aucLaqGlF696dTyQ==}
@@ -1705,6 +1711,10 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
+  ignore@7.0.9:
+    resolution: {integrity: sha512-brTTsvFRt5C1gGHtPst/281UjPD5t9fBqbgoMPlVWy11ZLTPfu7HxK4ZYqO9H7o/yC9rSTCI85EaQ4OoY12qYw==}
+    engines: {node: '>= 4'}
+
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
@@ -2515,6 +2525,10 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
 
+  '@jsr/totto2727__gitignore-patterns@0.1.0':
+    dependencies:
+      ignore: 7.0.9
+
   '@napi-rs/lzma-linux-x64-gnu@1.5.1':
     optional: true
 
@@ -3243,6 +3257,8 @@ snapshots:
 
   fsevents@2.3.3:
     optional: true
+
+  ignore@7.0.9: {}
 
   js-tokens@4.0.0: {}
 

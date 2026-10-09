@@ -167,6 +167,20 @@ Keep the shared runtime and test resolved versions aligned with the submodule wh
 The starter no longer uses the inherited `pnpmCommand` transport, and its deployment, test, and secret instructions use VP.
 This transport change is limited to the starter's orchestration: the pinned runtime source remains unchanged.
 
+## Gitignore-based lint exclusions
+
+- **Purpose:** keep the starter's lint exclusions synchronized with reachable `.gitignore` files.
+- **Affected areas:** `vite.config.ts`, `.npmrc`, the root development dependencies, the lockfile, and this record.
+- **Difference:** `@totto2727/gitignore-patterns` generates root-relative exclusion patterns when the starter configuration loads, instead of separate `dist`, `node_modules`, and `.wrangler` glob lists.
+- **Operational impact:** `.npmrc` selects the public JSR npm-compatible registry for the package alias, and frozen installs use the recorded package version and integrity.
+
+The configuration retains the separate exclusions for the upstream submodule, generated source directories, `*.gen.ts`, and `worker-configuration.d.ts` because they are not fully covered by the starter's Gitignore rules.
+The generator takes a snapshot of existing ignored paths on each configuration load.
+Only paths covered by reachable Gitignore rules receive these generated exclusions.
+A `dist` or `.wrangler` directory outside those rules no longer receives a separate global exclusion.
+Vite Plus also applies its native Gitignore exclusions.
+The runtime submodule source, its toolchain configuration, and the gitlink are unchanged.
+
 ## Compatible dependency ranges
 
 - **Purpose:** allow compatible dependency releases instead of exact npm requirements in the deployment starter.
