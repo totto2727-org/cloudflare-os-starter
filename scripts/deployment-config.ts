@@ -198,8 +198,10 @@ export interface BaseConfigs {
 
 /** One build step `deploy.ts` runs before deploying. See `buildCommands`. */
 export interface BuildCommand {
-  /** Arguments passed to `pnpm`, from the repository root. */
+  /** Arguments passed to the installed workspace's `vp` launcher. */
   args: string[];
+  /** The pinned runtime has its own Vite+ version and task schema. */
+  cwd?: "cloudflare-os";
   /**
    * Variables set on top of the ambient environment for this step alone. Explicit rather than
    * inherited: a build-time flag that arrives by inheritance is one a cached `vp` run would strip.

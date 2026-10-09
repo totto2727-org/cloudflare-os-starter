@@ -4,7 +4,6 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, join, relative, resolve } from "node:path";
 import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
-import { pnpmCommand } from "../cloudflare-os/scripts/pnpm-command.ts";
 import { resolveBinEntry } from "../cloudflare-os/scripts/bin-entry.ts";
 import { AI_GATEWAY_PROVIDERS } from "./deployment-config.ts";
 import type {
@@ -360,7 +359,7 @@ export function aiGatewayPlan(config: DeploymentConfig): AiGatewayPlan | null {
  * The deploy-time half of `AiGatewayConfig`'s constructor checks
  * (cloudflare-os/packages/workshop-backend/src/ai-gateway.ts), mirroring `resolveAiGateway()` in
  * cloudflare-os/scripts/preview/staging-config.ts. A configuration the backend would reject belongs
- * in a failed `pnpm check`, not in somebody's first chat.
+ * in a failed `vp exec node --run check`, not in somebody's first chat.
  */
 function validateAiGateway(config: DeploymentConfig): void {
   if (config.aiGateway.workersAi !== undefined) {
@@ -565,24 +564,24 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
 // `--no-cache` goes before the task name. Everything after it is `[ADDITIONAL_ARGS]`, forwarded to
 // the task's own command -- `vp run -F x build --no-cache` reaches `tsc` as an unknown option.
 
-/** `vp run --no-cache <task>` for a package in the submodule's workspace. */
-function submoduleBuild(pkg: string, task = "build"): string[] {
-  return ["--dir", "cloudflare-os", "exec", "vp", "run", "-F", pkg, "--no-cache", task];
+/** Uncached `vp run` task in the submodule's separately installed workspace. */
+function submoduleBuild(pkg: string, task = "build"): BuildCommand {
+  return { args: ["run", "-F", pkg, "--no-cache", task], cwd: "cloudflare-os" };
 }
 
 /** Uncached TypeScript build without loading the pinned submodule's legacy Vite+ task graph. */
-function ownBuild(pkg: string): string[] {
-  return ["--filter", pkg, "exec", "tsc"];
+function ownBuild(pkg: string): BuildCommand {
+  return { args: ["exec", "--filter", pkg, "tsc"] };
 }
 
 /**
- * The build steps `pnpm check` and `pnpm deploy` run, in order, from the repository root.
+ * The build steps `vp exec node --run check` and `vp exec node --run deploy` run, in order, from the repository root.
  *
  * Submodule builds retain their own Vite+ version and `vp run` tasks. Starter-owned builds invoke
- * `tsc` directly: Vite+ 1 cannot load the pinned submodule's legacy task cache configuration, even
+ * `tsc` through `vp exec`: Vite+ 1 cannot load the pinned submodule's legacy task cache configuration, even
  * when the requested package is outside that submodule.
  *
- * `--no-cache` on every submodule task and no cache layer for direct `tsc` invocations. A cache hit
+ * `--no-cache` on every submodule task and no cache layer for `vp exec tsc` invocations. A cache hit
  * is only as good as its fingerprint, which is cheap to get wrong on a build you can re-run and
  * expensive on a deploy you cannot. This matches upstream's uncached deploy rule
  * (cloudflare-os/scripts/deploy-scripts.test.ts). It also restores the full ambient
@@ -600,18 +599,18 @@ export function buildCommands(config: DeploymentConfig): BuildCommand[] {
     // nested invocation carrying its own flag -- measured: the configurator app replayed from
     // cache. Rebuilding it here from source is what upstream's own `deploy` script does; the
     // `build` step below then type-checks and replays the bytes this step just wrote.
-    { args: submoduleBuild("@gadgets/gatekeeper-context", "build:app") },
-    { args: submoduleBuild("@gadgets/gatekeeper-context") },
+    submoduleBuild("@gadgets/gatekeeper-context", "build:app"),
+    submoduleBuild("@gadgets/gatekeeper-context"),
     // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
-    { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
-    { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
-    { args: ownBuild("custom-gatekeeper") },
-    ...(config.errorReporting.enabled ? [{ args: ownBuild("error-reporter") }] : []),
+    submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app"),
+    submoduleBuild("@gadgets/gatekeeper-scheduler"),
+    ownBuild("custom-gatekeeper"),
+    ...(config.errorReporting.enabled ? [ownBuild("error-reporter")] : []),
     // Access mode is a build-time constant in the frontend bundle (`src/useAuth.ts`), so it is set
     // here rather than inherited: a bundle built under a different value is wrong, not just stale.
-    { args: submoduleBuild("@gadgets/workshop-frontend"), env: { VITE_CF_ACCESS_MODE: "true" } },
-    { args: submoduleBuild("@gadgets/router") },
-    { args: submoduleBuild("@gadgets/workshop-backend") },
+    { ...submoduleBuild("@gadgets/workshop-frontend"), env: { VITE_CF_ACCESS_MODE: "true" } },
+    submoduleBuild("@gadgets/router"),
+    submoduleBuild("@gadgets/workshop-backend"),
   ];
 }
 
@@ -655,18 +654,21 @@ function runCommand(
   }
 }
 
-// Spawned through pnpmCommand rather than as a bare "pnpm": on Windows the pnpm on PATH is a `.cmd`
-// shim Node refuses to spawn without a shell, and `shell: true` would re-split argv and break any
-// checkout path containing a space.
+// Run the installed JS launcher through Node rather than spawning a Windows .cmd shim.
+// Each workspace keeps its own Vite+ version, and no external pnpm executable is required.
 function run(args: string[], cwd = root, env: NodeJS.ProcessEnv = process.env): void {
-  const [command, argv] = pnpmCommand(args, env);
-  runCommand(command, argv, cwd, env, `pnpm ${args.join(" ")}`);
+  const workspace = cwd === join(root, "cloudflare-os") ? cwd : root;
+  const entry = join(workspace, "node_modules", "vite-plus", "bin", "vp");
+  if (!existsSync(entry)) {
+    throw new Error(`Vite+ is not installed in ${relative(root, workspace) || "."}. Run vp install there.`);
+  }
+  runCommand(process.execPath, [entry, ...args], cwd, env, `vp ${args.join(" ")}`);
 }
 
 /**
  * `wrangler deploy` for one package, spawned as `node <entry>` when the entry point behind the
- * `.bin` shim can be found. That saves the ~0.33s `pnpm exec` costs per call and sidesteps the
- * Windows `.cmd` shim entirely; when it cannot be resolved, the pnpm path is still there.
+ * `.bin` shim can be found. That avoids an extra command-dispatch process and sidesteps the
+ * Windows `.cmd` shim entirely; when it cannot be resolved, `vp exec` is still available.
  */
 function deployWorker(dir: string, extraArgs: string[]): void {
   const cwd = join(root, dir);
@@ -686,8 +688,8 @@ function requireSubmodule(): void {
 }
 
 function build(config: DeploymentConfig): void {
-  for (const { args, env } of buildCommands(config)) {
-    run(args, root, env ? { ...process.env, ...env } : process.env);
+  for (const { args, cwd, env } of buildCommands(config)) {
+    run(args, cwd ? join(root, cwd) : root, env ? { ...process.env, ...env } : process.env);
   }
 }
 
@@ -708,7 +710,7 @@ function reportAiGateway(config: DeploymentConfig): void {
     `\nCF_AI_GATEWAY_API_TOKEN is required by this configuration:\n` +
     gateway.tokenReasons.map((reason) => `  - ${reason}`).join("\n") +
     `\nInstall it before deploying:\n  CLOUDFLARE_ACCOUNT_ID=${config.accountId} ` +
-    `pnpm exec wrangler secret put CF_AI_GATEWAY_API_TOKEN ` +
+    `vp exec wrangler secret put CF_AI_GATEWAY_API_TOKEN ` +
     `--name ${config.workers.workshop.name}\n`);
 }
 
@@ -732,7 +734,7 @@ async function main(): Promise<void> {
         JSON.stringify(generatedConfig, null, 2) + "\n");
     }
     const check = process.argv.includes("--check");
-    if (check) run(["test"]);
+    if (check) run(["exec", "node", "--run", "test"]);
     build(config);
     const deployArgs = check ? ["--dry-run"] : [];
     if (config.errorReporting.enabled) {

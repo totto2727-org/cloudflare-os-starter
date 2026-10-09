@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://developers.cloudflare.com/workers/"><img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F6821F?logo=cloudflare&logoColor=white"></a>
   <a href="https://nodejs.org/"><img alt="Node.js 24.19+" src="https://img.shields.io/badge/Node.js-24.19+-5FA04E?logo=nodedotjs&logoColor=white"></a>
-  <a href="https://pnpm.io/"><img alt="pnpm 11.17" src="https://img.shields.io/badge/pnpm-11.17-F69220?logo=pnpm&logoColor=white"></a>
+  <a href="https://viteplus.dev/"><img alt="Vite Plus 1" src="https://img.shields.io/badge/Vite_Plus-1-646CFF?logo=vite&logoColor=white"></a>
   <a href="https://www.typescriptlang.org/"><img alt="TypeScript 7" src="https://img.shields.io/badge/TypeScript-7-3178C6?logo=typescript&logoColor=white"></a>
   <a href="https://github.com/cloudflare/cloudflare-os"><img alt="Cloudflare OS upstream" src="https://img.shields.io/badge/upstream-Cloudflare_OS-24292F?logo=github"></a>
 </p>
@@ -21,9 +21,9 @@
 
 ## Four steps
 
-1. Install the dependencies and run `pnpm exec wrangler login`.
+1. Install the dependencies and run `vp exec wrangler login`.
 2. Fill in `deployment.jsonc`: account ID, Worker names, hostname, Access audience, admin emails.
-3. Run `pnpm check`, then `pnpm deploy`.
+3. Run `vp exec node --run check`, then `vp exec node --run deploy`.
 4. Open `/admin` and set the site name, logo, and accent color; branding needs no redeploy.
 
 [Deploy](#deploy) and [Customization](#customization) expand each step. Everything else on this page is optional reading.
@@ -64,13 +64,13 @@ Anything past that needs your own code or settings, which is what this repositor
 
 ### 1. Prepare the workspace
 
-Install [Node.js 24.19 or newer](https://nodejs.org/) (the deploy scripts are TypeScript run directly by `node`), [pnpm 11.17](https://pnpm.io/installation), and authenticate [Wrangler](https://developers.cloudflare.com/workers/wrangler/commands/#login):
+Install [Node.js 24.19 or newer](https://nodejs.org/) (the deploy scripts are TypeScript run directly by `node`), [Vite Plus](https://viteplus.dev/), and authenticate [Wrangler](https://developers.cloudflare.com/workers/wrangler/commands/#login):
 
 ```sh
 git submodule update --init
-pnpm install
-pnpm --dir cloudflare-os install
-pnpm exec wrangler login
+vp install
+vp -C cloudflare-os install
+vp exec wrangler login
 ```
 
 Your account needs [Workers](https://developers.cloudflare.com/workers/), [KV](https://developers.cloudflare.com/kv/), [R2](https://developers.cloudflare.com/r2/), [Browser Rendering](https://developers.cloudflare.com/browser-rendering/), and [Dynamic Worker Loaders](https://developers.cloudflare.com/workers/runtime-apis/bindings/worker-loader/). It also needs [Workers AI](https://developers.cloudflare.com/workers-ai/) and [AI Gateway](https://developers.cloudflare.com/ai-gateway/), which the default model catalog runs on; only turning that catalog off makes them dispensable. [Artifacts](https://developers.cloudflare.com/artifacts/) is optional.
@@ -89,8 +89,8 @@ The hostname belongs to the router, the only Worker here with a public route. Wr
 ### 3. Validate and deploy
 
 ```sh
-pnpm check
-pnpm deploy
+vp exec node --run check
+vp exec node --run deploy
 ```
 
 With resource values left as `null`, Wrangler creates the three KV namespaces and R2 bucket automatically and reconnects them on later deploys. Set explicit IDs or a bucket name when the deployment must reuse existing resources.
@@ -126,7 +126,17 @@ The complete control reference and recipes live in [Customization](docs/customiz
 ## Operations and upgrades
 
 This fork's starter toolchain changes and unchanged runtime pin are recorded in [Upstream differences](docs/upstream-differences.md).
-Builds and tests use uncached pnpm orchestration because Vite Plus 1 cannot load the pinned runtime's legacy task graph, while lint uses Vite Plus 1.
+Root commands use Vite Plus execution and Node.js package scripts, bypassing the task graph until the pinned runtime's legacy cache schema is upgraded.
+`vp run` cannot load that graph with Vite Plus 1, even when filtered to starter-owned packages.
+Use these entry points for local validation:
+
+```sh
+vp exec node --run test
+vp exec node --run lint
+vp exec node --run build
+```
+
+Builds and standalone Vitest tests remain uncached, while lint uses Vite Plus 1.
 
 - Stream production events with [`wrangler tail`](https://developers.cloudflare.com/workers/observability/logs/real-time-logs/).
 - Triage explicit failures and choose export destinations with the [observability guide](docs/observability.md).

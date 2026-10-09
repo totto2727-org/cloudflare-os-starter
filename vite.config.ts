@@ -7,6 +7,8 @@ import { defineConfig } from 'vite-plus'
  * Lint only. There is deliberately no `run.tasks` block here: Vite+ creates a task for every
  * package from a workspace-root task definition, including the root package itself, and the root
  * has no sources for one to act on. Per-package tasks live in each package's own `vite.config.ts`.
+ * Root VP exec and Node.js package scripts bypass that graph until the pinned runtime's legacy
+ * cache schema is upgraded for Vite+ 1.
  */
 export default defineConfig({
   check: {
@@ -22,7 +24,8 @@ export default defineConfig({
     plugins: ['typescript', 'unicorn', 'oxc', 'import'],
     options: {
       // Type-aware linting is intentionally off, as upstream. `tsc` is what enforces type safety
-      // here: `pnpm types:scripts` for the deploy tooling and `pnpm build` for the packages.
+      // here: `vp exec node --run types:scripts` for deploy tooling and
+      // `vp exec node --run build` for the packages.
       typeAware: false,
     },
     env: {

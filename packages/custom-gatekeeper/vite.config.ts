@@ -1,15 +1,16 @@
-// Vite+ 1 per-package settings. The root pnpm build/test scripts bypass these tasks until the
-// pinned runtime's legacy task graph is upgraded, because vp loads every workspace config.
+// Vite+ 1 per-package settings. Root VP exec and Node.js package scripts bypass these tasks until the
+// pinned runtime's legacy task graph is upgraded, because vp run loads every workspace config.
 // These cache definitions retain the exclusions for that future upgrade.
 // Vite+ per-package settings. `vitest.config.ts` beside this file is vitest's own config (vitest
 // prefers it over this one); this file exists only to declare the `build` and `test` tasks that
-// `vp run` executes.
+// `vp run` can execute after the pinned runtime's task graph is upgraded.
 //
 // Both are tasks rather than package.json scripts because each reads a path it also writes, and vp
 // declines to cache such a task: `tsc` emits into `dist/`, which automatic tracking otherwise counts
 // as an input of the same package, and every `vitest run` rewrites the scratch paths below and reads
 // them back on the next run. vp forbids a task and a script sharing a name, so the `build` and
-// `test` scripts are gone -- `vp run -F custom-gatekeeper <task>` is what replaces them.
+// `test` scripts are gone. Root `vp exec node --run build` and `vp exec node --run test` currently
+// bypass these task definitions, rather than invoking `vp run -F custom-gatekeeper <task>`.
 
 // This package's own `tsc` output. Package-relative, not workspace-wide: a sibling's `dist/` may be
 // a real input via its `exports`.

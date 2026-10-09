@@ -110,16 +110,19 @@ Workers AI は同一アカウントの binding を使用します。
 
 ```sh
 vp exec wrangler login
-pnpm run check
+vp exec node --run check
 ```
 
-`pnpm run check` は公式のテスト、ビルド、Wrangler dry-run を行います。
+`vp exec node --run check` は starter のテスト、ビルド、Wrangler dry-run を行います。
+ルートのコマンドは VP の実行機能と Node.js の package script を使い、固定された runtime の旧 cache schema が更新されるまで task graph を迂回します。
+Vite Plus 1 の `vp run` はこの graph を読み込めないため、代わりに `vp exec node --run <script>` を使います。
+テスト、lint、ビルドを個別に実行する場合は、それぞれ `vp exec node --run test`、`vp exec node --run lint`、`vp exec node --run build` を使います。
 placeholder が残っている場合は停止するので、設定を修正してから再実行してください。
 
 確認が成功したら、本人が本番デプロイを実行します。
 
 ```sh
-pnpm run deploy
+vp exec node --run deploy
 ```
 
 既定では Error Reporter、Context、Scheduler、Custom Gatekeeper、Workshop、Router の六つの Worker を順番にデプロイします。

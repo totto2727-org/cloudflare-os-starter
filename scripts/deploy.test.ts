@@ -567,14 +567,16 @@ test("generates binding-only storage for automatic provisioning", async () => {
 test("never lets a deploy replay a cached build artifact", () => {
   const commands = buildCommands(validConfig);
   assert.ok(commands.length > 0, "expected at least one build command");
-  for (const { args } of commands) {
-    const command = args.join(" ");
-    if (args[0] === "--filter") {
-      assert.ok(["custom-gatekeeper", "error-reporter"].includes(args[1]), command);
-      assert.deepEqual(args, ["--filter", args[1], "exec", "tsc"]);
+  for (const { args, cwd } of commands) {
+    const command = `vp ${args.join(" ")}`;
+    if (args[0] === "exec") {
+      assert.equal(cwd, undefined, "starter builds must use the starter's Vite+ workspace");
+      assert.ok(["custom-gatekeeper", "error-reporter"].includes(args[2]), command);
+      assert.deepEqual(args, ["exec", "--filter", args[2], "tsc"]);
       continue;
     }
     // Submodule builds retain their own task runner and must explicitly bypass its cache.
+    assert.equal(cwd, "cloudflare-os", "runtime builds must use the pinned runtime's Vite+ workspace");
     assert.ok(command.includes("vp run"),
       `build step does not go through vp run: ${command}`);
     assert.ok(command.includes("--no-cache"),
@@ -589,9 +591,14 @@ test("never lets a deploy replay a cached build artifact", () => {
 
 test("keeps starter checks outside the pinned runtime's legacy Vite+ task graph", async () => {
   const manifest = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
-  assert.equal(manifest.scripts.build, "pnpm -r --filter '!cloudflare-os-starter' exec tsc");
+  assert.equal(manifest.scripts.build, "vp exec --filter '!cloudflare-os-starter' tsc");
   assert.equal(manifest.scripts.test,
-    "node --test 'scripts/**/*.test.ts' && pnpm -r --filter '!cloudflare-os-starter' --if-present run test:run");
+    "vp exec node --test 'scripts/**/*.test.ts' && vp exec --filter @gadgets/error-reporting --filter custom-gatekeeper --filter error-reporter node --run test:run");
+  for (const name of ["build", "test", "lint"]) {
+    assert.match(manifest.scripts[name], /^vp /, `${name} must use vp`);
+    assert.doesNotMatch(manifest.scripts[name], /\bpnpm\b|\bvp run\b/,
+      `${name} must neither revert to pnpm nor load the incompatible task graph`);
+  }
   for (const pkg of ["custom-gatekeeper", "error-reporter"]) {
     const owned = JSON.parse(await readFile(
       new URL(`../packages/${pkg}/package.json`, import.meta.url), "utf8"));

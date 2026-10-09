@@ -87,8 +87,9 @@ Worker names are service identities, and the unchanged deployment implementation
 ## Added deployment guide
 
 [DEPLOYMENT.ja.md](../DEPLOYMENT.ja.md) adds Japanese instructions for this configured environment, including dependency preparation, Access checks, configuration provenance, storage reuse, operator-run validation and deployment, and post-deployment checks.
-It documents installation through `vp`, and uses `pnpm run check` and `pnpm run deploy` for the combined toolchain because `vp run` cannot load the pinned runtime's legacy task schema.
-These are documentation additions, not newly implemented package scripts, deployment logic, or runtime features.
+It documents `vp install`, `vp -C cloudflare-os install`, and `vp exec wrangler login`, followed by `vp exec node --run check` and `vp exec node --run deploy`.
+These entry points use VP execution and Node.js package scripts without loading the task graph, because Vite Plus 1's `vp run` cannot load the pinned runtime's legacy cache schema.
+The guide itself adds no deployment logic or runtime features.
 The guide's statements about previously confirmed resource existence are recorded provenance, not a fresh remote verification by this comparison.
 
 ## What has not changed
@@ -127,8 +128,9 @@ Never include API tokens, signing secrets, cookies, or other credential values.
 The comparison inventory above describes the deployment-only snapshot.
 The current fork also includes the toolchain changes below, imported from `totto2727-org/cloudflare-os-starter-1` at [`c554be66acce6dd9def895ceecc8e39eef44f0d5`](https://github.com/totto2727-org/cloudflare-os-starter/commit/c554be66acce6dd9def895ceecc8e39eef44f0d5).
 The existing `deployment.jsonc` and runtime gitlink are preserved.
-The additional changed paths are `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `packages/custom-gatekeeper/package.json`, `packages/custom-gatekeeper/vite.config.ts`, `packages/error-reporter/vite.config.ts`, `scripts/deploy.ts`, and `scripts/deploy.test.ts`.
-The compatible dependency range changes below are imported from [`ec17eb7b53f750f54678e8d56c32a9737d1919ec`](https://github.com/totto2727-org/cloudflare-os-starter/commit/ec17eb7b53f750f54678e8d56c32a9737d1919ec) of the same tooling fork and combined with the scoped overrides.
+The additional changed paths are `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `packages/custom-gatekeeper/package.json`, `packages/custom-gatekeeper/vite.config.ts`, `packages/error-reporter/vite.config.ts`, `vite.config.ts`, `scripts/deploy.ts`, `scripts/deploy.test.ts`, and `scripts/deployment-config.ts`.
+The compatible dependency range changes below are imported from [`ec17eb7b53f750f54678e8d56c32a9737d1919ec`](https://github.com/totto2727-org/cloudflare-os-starter/commit/ec17eb7b53f750f54678e8d56c32a9737d1919ec) of the same tooling fork.
+The consolidated starter removes all dependency overrides and uses normal dependency and peer resolution, rather than retaining tooling-fork override exceptions.
 The README, Japanese deployment guide, and this record also reflect the combined workflow.
 Statements above about unchanged scripts and manifests apply only to the earlier deployment-only snapshot, not the current toolchain.
 
@@ -137,21 +139,23 @@ Statements above about unchanged scripts and manifests apply only to the earlier
 - **Purpose:** adopt stable Vite Plus 1 in the deployment starter without changing the pinned runtime's decorator transforms or Worker test integration.
 - **Affected areas:** the workspace catalog and lockfile, root package scripts, owned package task configs, deployment build commands and their regression tests, and this documentation linked from the README.
 - **Difference:** the starter uses the flexible `vite-plus: ^1.0.0` range instead of upstream's `^0.2.8`, with the lockfile resolving the mature `1.0.0` release.
-- **Operational impact:** `vp lint` uses the updated linter, while root `pnpm build` and `pnpm test` use uncached pnpm orchestration of the same TypeScript compiler and standalone Vitest suites.
+- **Operational impact:** root entry points are `vp exec node --run test`, `vp exec node --run lint`, and `vp exec node --run build`, with the same pattern for `check` and `deploy`.
+Root scripts use `vp exec` filters and Node.js 24 package-script execution, not pnpm orchestration, to run the TypeScript compiler and standalone Vitest suites without task caching.
+The lint script runs Vite Plus lint and the deploy-tooling and package type checks.
 Vite Plus 1 requires task `input` and `output` fields under `cache`, but the pinned runtime's shared test task still uses the legacy schema.
-Vite Plus loads every workspace package config, so filtering to owned packages does not bypass that incompatibility.
+`vp run` loads every workspace package config, so filtering its task graph to owned packages does not bypass that incompatibility.
 Owned package task definitions use the new schema in preparation for a later upstream pin upgrade, but the starter cannot currently use `vp run` to execute them.
-The deployment script invokes `tsc` directly for the owned custom Gatekeeper and Error Reporter, preserving the requirement that deployment builds never replay cached artifacts.
-Submodule deployment builds still use their separate upstream Vite Plus version with `--no-cache`, as before.
+The deployment script invokes `tsc` through VP execution for the owned custom Gatekeeper and Error Reporter, preserving the requirement that deployment builds never replay cached artifacts.
+It launches the explicit workspace-local `node_modules/vite-plus/bin/vp` entry with `process.execPath`, rather than using pnpm transport or relying on a globally selected VP binary.
+The starter selects Vite Plus `1.0.0`, while runtime build commands select the pinned runtime's separate Vite Plus `0.2` toolchain by setting `BuildCommand.cwd` to `"cloudflare-os"` and retain `--no-cache`.
 The upstream runtime workspace still installs its own pinned toolchain separately, as described in the README.
 
 Other shared catalog entries retain their existing concrete lockfile resolutions, including Vite `7.3.6`, TypeScript `7.0.2`, and `capnweb-validate` `0.2.4`, while their declarations use compatible caret ranges as described below.
 Vite 7 is deliberate: the pinned runtime depends on esbuild's Stage-3 decorator lowering for `@validateRpc()`, rather than the newer Oxc transform.
-The starter narrows its Vite override to standalone Vitest 4 and `@vitest/mocker` 4 so that Vite Plus 1's private Vite core and bundled Vitest 5 are not replaced with Vite 7.
-A scoped `@vitest/browser-preview` override likewise prevents Vite Plus's optional browser-preview 5 dependency from satisfying the standalone package tests' Vitest 4 peer.
+The starter has no dependency overrides: standalone Vitest 4, its peers, and Vite Plus 1's private Vite core and bundled Vitest 5 use normal dependency resolution.
 The redundant root Worker pool dependency is removed, leaving it in the custom Gatekeeper package that actually owns Worker tests.
-`pnpm peers check` still reports Vite Plus's private Vite alias version (`1.0.0` rather than its underlying Vite 8 version) against bundled Vitest 5's Vite peer, plus an unused optional `@vitest/ui` 5 peer against Vitest 4.
 The supported checks are non-UI standalone Vitest 4 suites and Vite Plus lint, not Vitest UI or Vite Plus's bundled Worker test runner.
+Dependency installation, root tests, and lint do not establish that the full `check` command's Wrangler dry-run or a production deployment succeeds.
 The starter retains the package manager's default minimum release age without toolchain exclusions or threshold changes.
 Vite Plus `1.0.0` and its private core and native toolchain packages are mature enough for fresh frozen installs under that policy now.
 The flexible range permits later compatible releases only when they meet the same age policy, rather than bypassing it for the freshly published `1.1.0` release.
@@ -159,16 +163,19 @@ The flexible range permits later compatible releases only when they meet the sam
 Worker tests continue to use the standalone catalog `vitest: ^4.1.10` and `@cloudflare/vitest-pool-workers: ^0.20.2`, never `vp test` or `vite-plus/test`.
 Even the newer Worker pool `0.22.0` [declares Vitest, runner, and snapshot peers of `^4.1.0`](https://registry.npmjs.org/@cloudflare/vitest-pool-workers/0.22.0), whereas [Vite Plus `1.0.0` bundles Vitest `5.0.1`](https://registry.npmjs.org/vite-plus/1.0.0).
 Updating the pool alone would therefore not make Vite Plus's bundled test runner compatible.
-Keep the shared runtime and test resolved versions aligned with the submodule when upgrading its gitlink, and treat the starter's Vite Plus entry and scoped overrides as documented exceptions.
+Keep the shared runtime and test resolved versions aligned with the submodule when upgrading its gitlink, and treat the starter's newer Vite Plus entry as the documented toolchain exception.
+The starter no longer uses the inherited `pnpmCommand` transport, and its deployment, test, and secret instructions use VP.
+This transport change is limited to the starter's orchestration: the pinned runtime source remains unchanged.
 
 ## Compatible dependency ranges
 
 - **Purpose:** allow compatible dependency releases instead of exact npm requirements in the deployment starter.
-- **Affected areas:** the root and custom Gatekeeper manifests, shared workspace catalog, dependency overrides, and lockfile requirement metadata.
-- **Difference:** `capnweb-validate`, `typescript`, `vite`, and `@types/node` requirements use caret ranges, including scoped Vite peer-resolution overrides and the standalone Vitest 4 browser-preview override at `^4.1.10`.
-- **Operational impact:** frozen installs retain the existing concrete versions and integrity hashes, while later dependency updates can select compatible releases under pnpm's unchanged default minimum release age.
+- **Affected areas:** the root and custom Gatekeeper manifests, shared workspace catalog, removal of dependency overrides, and lockfile requirement metadata.
+- **Difference:** `capnweb-validate`, `typescript`, `vite`, and `@types/node` requirements use caret ranges, without Vite or browser-preview peer-resolution overrides.
+- **Operational impact:** frozen installs through `vp install` use the committed lockfile, while later dependency updates can select compatible releases under the underlying package manager's unchanged default minimum release age.
 
-The scoped Vite overrides still constrain standalone Vitest 4 transforms to Vite 7, preserving the esbuild Stage-3 decorator lowering that `@validateRpc()` requires, without replacing Vite Plus 1's private Vite core or bundled Vitest 5.
+The shared Vite catalog remains on `^7.3.6` to preserve the esbuild Stage-3 decorator lowering that `@validateRpc()` requires.
+Normal peer resolution, not overrides, governs the standalone test graph.
 The TypeScript range remains on TypeScript 7 because the upstream shared configuration uses `singleThreaded`.
 The starter and upstream runtime install separately, so review shared resolved versions in both lockfiles when updating dependencies to prevent incompatible RPC stub copies.
 Range declarations need not be byte-identical to the upstream catalog, but shared runtime resolutions must remain aligned.

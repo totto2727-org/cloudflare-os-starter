@@ -33,18 +33,6 @@ catalog:
   vitest: ^4.1.10
   wrangler: ^4.119.0
 
-overrides:
-  # Constrain standalone Vitest 4 and its mocker to the compatible Vite 7 catalog range,
-  # including their peer resolution.
-  # Do not override Vite+ 1's private Vite core or its bundled Vitest 5: those are toolchain
-  # internals, not the decorator-dependent Worker transform used by the tasks below.
-  'vitest@4>vite': "catalog:"
-  '@vitest/mocker@4>vite': "catalog:"
-  # Vite+ installs browser-preview 5, which must not satisfy standalone Vitest 4's optional peer.
-  'vitest@4>@vitest/browser-preview': ^4.1.10
-  # Constrain optional vite/vitest peers to the compatible Node 26 type range.
-  '@types/node': ^26.1.0
-
 allowBuilds:
   '@google/genai': true
   core-js-pure: true

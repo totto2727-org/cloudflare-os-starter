@@ -1,4 +1,4 @@
-// Vite+ 1 per-package settings. Root pnpm scripts currently bypass tasks because the pinned
+// Vite+ 1 per-package settings. Root VP exec and Node.js package scripts bypass tasks because the pinned
 // runtime's legacy task graph cannot be loaded by vp 1. These caches are ready for its upgrade.
 // Vite+ per-package settings. See packages/custom-gatekeeper/vite.config.ts for why `build` and
 // `test` are tasks rather than package.json scripts, and what each exclusion buys.

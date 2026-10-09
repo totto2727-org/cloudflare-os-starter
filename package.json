@@ -7,12 +7,12 @@
     "node": ">=24.19.0"
   },
   "scripts": {
-    "build": "pnpm -r --filter '!cloudflare-os-starter' exec tsc",
-    "test": "node --test 'scripts/**/*.test.ts' && pnpm -r --filter '!cloudflare-os-starter' --if-present run test:run",
+    "build": "vp exec --filter '!cloudflare-os-starter' tsc",
+    "test": "vp exec node --test 'scripts/**/*.test.ts' && vp exec --filter @gadgets/error-reporting --filter custom-gatekeeper --filter error-reporter node --run test:run",
     "types:scripts": "tsc -p scripts/tsconfig.json",
     "lint:check": "vp lint",
     "lint:fix": "vp lint --fix",
-    "lint": "pnpm run lint:check && pnpm run types:scripts && pnpm run build",
+    "lint": "vp exec node --run lint:check && vp exec node --run types:scripts && vp exec node --run build",
     "check": "node scripts/deploy.ts --check",
     "deploy": "node scripts/deploy.ts"
   },
