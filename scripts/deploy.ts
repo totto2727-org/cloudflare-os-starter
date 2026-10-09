@@ -570,21 +570,22 @@ function submoduleBuild(pkg: string, task = "build"): string[] {
   return ["--dir", "cloudflare-os", "exec", "vp", "run", "-F", pkg, "--no-cache", task];
 }
 
-/** `vp run --no-cache <task>` for a package in this repository's own workspace. */
-function ownBuild(pkg: string, task = "build"): string[] {
-  return ["exec", "vp", "run", "-F", pkg, "--no-cache", task];
+/** Uncached TypeScript build without loading the pinned submodule's legacy Vite+ task graph. */
+function ownBuild(pkg: string): string[] {
+  return ["--filter", pkg, "exec", "tsc"];
 }
 
 /**
  * The build steps `pnpm check` and `pnpm deploy` run, in order, from the repository root.
  *
- * Every one goes through `vp run` rather than `pnpm --filter <pkg> build`. Two of the three
- * submodule targets have no `build` *script* at all any more -- they have a Vite+ *task*, which
- * `pnpm --filter` cannot see -- and `vp run` runs scripts and tasks alike, so one form covers both.
+ * Submodule builds retain their own Vite+ version and `vp run` tasks. Starter-owned builds invoke
+ * `tsc` directly: Vite+ 1 cannot load the pinned submodule's legacy task cache configuration, even
+ * when the requested package is outside that submodule.
  *
- * `--no-cache` on every one. A cache hit is only as good as its fingerprint, which is cheap to get
- * wrong on a build you can re-run and expensive on a deploy you cannot; it is upstream's rule for
- * the same reason (cloudflare-os/scripts/deploy-scripts.test.ts). It also restores the full ambient
+ * `--no-cache` on every submodule task and no cache layer for direct `tsc` invocations. A cache hit
+ * is only as good as its fingerprint, which is cheap to get wrong on a build you can re-run and
+ * expensive on a deploy you cannot. This matches upstream's uncached deploy rule
+ * (cloudflare-os/scripts/deploy-scripts.test.ts). It also restores the full ambient
  * environment, which is the belt to `workshop-frontend`'s `env: ['VITE_*']` braces: under a *cached*
  * `vp` run only declared patterns survive, and an undeclared variable is dropped from the command
  * and from the fingerprint both.

@@ -87,7 +87,7 @@ Worker names are service identities, and the unchanged deployment implementation
 ## Added deployment guide
 
 [DEPLOYMENT.ja.md](../DEPLOYMENT.ja.md) adds Japanese instructions for this configured environment, including dependency preparation, Access checks, configuration provenance, storage reuse, operator-run validation and deployment, and post-deployment checks.
-It presents the existing workflow through `vp`, including `vp install`, `vp -C cloudflare-os install`, `vp run check`, and `vp run deploy`.
+It documents installation through `vp`, and uses `pnpm run check` and `pnpm run deploy` for the combined toolchain because `vp run` cannot load the pinned runtime's legacy task schema.
 These are documentation additions, not newly implemented package scripts, deployment logic, or runtime features.
 The guide's statements about previously confirmed resource existence are recorded provenance, not a fresh remote verification by this comparison.
 
@@ -121,3 +121,41 @@ For each update:
 
 Keep this file as maintained fork documentation, not a task log, deployment success report, or ToDo ledger.
 Never include API tokens, signing secrets, cookies, or other credential values.
+
+## Consolidated toolchain differences
+
+The comparison inventory above describes the deployment-only snapshot.
+The current fork also includes the toolchain changes below, imported from `totto2727-org/cloudflare-os-starter-1` at `c554be66acce6dd9def895ceecc8e39eef44f0d5`.
+The existing `deployment.jsonc` and runtime gitlink are preserved.
+The additional changed paths are `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `packages/custom-gatekeeper/vite.config.ts`, `packages/error-reporter/vite.config.ts`, `scripts/deploy.ts`, and `scripts/deploy.test.ts`.
+The README, Japanese deployment guide, and this record also reflect the combined workflow.
+Statements above about unchanged scripts and manifests apply only to the earlier deployment-only snapshot, not the current toolchain.
+
+## Starter toolchain
+
+- **Purpose:** adopt stable Vite Plus 1 in the deployment starter without changing the pinned runtime's decorator transforms or Worker test integration.
+- **Affected areas:** the workspace catalog and lockfile, root package scripts, owned package task configs, deployment build commands and their regression tests, and this documentation linked from the README.
+- **Difference:** the starter uses the flexible `vite-plus: ^1.0.0` range instead of upstream's `^0.2.8`, with the lockfile resolving the mature `1.0.0` release.
+- **Operational impact:** `vp lint` uses the updated linter, while root `pnpm build` and `pnpm test` use uncached pnpm orchestration of the same TypeScript compiler and standalone Vitest suites.
+Vite Plus 1 requires task `input` and `output` fields under `cache`, but the pinned runtime's shared test task still uses the legacy schema.
+Vite Plus loads every workspace package config, so filtering to owned packages does not bypass that incompatibility.
+Owned package task definitions use the new schema in preparation for a later upstream pin upgrade, but the starter cannot currently use `vp run` to execute them.
+The deployment script invokes `tsc` directly for the owned custom Gatekeeper and Error Reporter, preserving the requirement that deployment builds never replay cached artifacts.
+Submodule deployment builds still use their separate upstream Vite Plus version with `--no-cache`, as before.
+The upstream runtime workspace still installs its own pinned toolchain separately, as described in the README.
+
+All other shared catalog entries retain the upstream values, including exact Vite `7.3.6`, TypeScript `7.0.2`, and `capnweb-validate` `0.2.4`.
+Vite 7 is deliberate: the pinned runtime depends on esbuild's Stage-3 decorator lowering for `@validateRpc()`, rather than the newer Oxc transform.
+The starter narrows its Vite override to standalone Vitest 4 and `@vitest/mocker` 4 so that Vite Plus 1's private Vite core and bundled Vitest 5 are not replaced with Vite 7.
+A scoped `@vitest/browser-preview` override likewise prevents Vite Plus's optional browser-preview 5 dependency from satisfying the standalone package tests' Vitest 4 peer.
+The redundant root Worker pool dependency is removed, leaving it in the custom Gatekeeper package that actually owns Worker tests.
+`pnpm peers check` still reports Vite Plus's private Vite alias version (`1.0.0` rather than its underlying Vite 8 version) against bundled Vitest 5's Vite peer, plus an unused optional `@vitest/ui` 5 peer against Vitest 4.
+The supported checks are non-UI standalone Vitest 4 suites and Vite Plus lint, not Vitest UI or Vite Plus's bundled Worker test runner.
+The starter retains the package manager's default minimum release age without toolchain exclusions or threshold changes.
+Vite Plus `1.0.0` and its private core and native toolchain packages are mature enough for fresh frozen installs under that policy now.
+The flexible range permits later compatible releases only when they meet the same age policy, rather than bypassing it for the freshly published `1.1.0` release.
+
+Worker tests continue to use the standalone catalog `vitest: ^4.1.10` and `@cloudflare/vitest-pool-workers: ^0.20.2`, never `vp test` or `vite-plus/test`.
+Even the newer Worker pool `0.22.0` [declares Vitest, runner, and snapshot peers of `^4.1.0`](https://registry.npmjs.org/@cloudflare/vitest-pool-workers/0.22.0), whereas [Vite Plus `1.0.0` bundles Vitest `5.0.1`](https://registry.npmjs.org/vite-plus/1.0.0).
+Updating the pool alone would therefore not make Vite Plus's bundled test runner compatible.
+Keep the runtime and test catalog values aligned with the submodule when upgrading its gitlink, and treat the starter's Vite Plus entry and scoped overrides as documented exceptions.

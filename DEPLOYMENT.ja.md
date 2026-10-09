@@ -110,16 +110,16 @@ Workers AI は同一アカウントの binding を使用します。
 
 ```sh
 vp exec wrangler login
-vp run check
+pnpm run check
 ```
 
-`vp run check` は公式のテスト、ビルド、Wrangler dry-run を行います。
+`pnpm run check` は公式のテスト、ビルド、Wrangler dry-run を行います。
 placeholder が残っている場合は停止するので、設定を修正してから再実行してください。
 
 確認が成功したら、本人が本番デプロイを実行します。
 
 ```sh
-vp run deploy
+pnpm run deploy
 ```
 
 既定では Error Reporter、Context、Scheduler、Custom Gatekeeper、Workshop、Router の六つの Worker を順番にデプロイします。
