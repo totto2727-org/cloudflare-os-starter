@@ -125,9 +125,10 @@ Never include API tokens, signing secrets, cookies, or other credential values.
 ## Consolidated toolchain differences
 
 The comparison inventory above describes the deployment-only snapshot.
-The current fork also includes the toolchain changes below, imported from `totto2727-org/cloudflare-os-starter-1` at `c554be66acce6dd9def895ceecc8e39eef44f0d5`.
+The current fork also includes the toolchain changes below, imported from `totto2727-org/cloudflare-os-starter-1` at [`c554be66acce6dd9def895ceecc8e39eef44f0d5`](https://github.com/totto2727-org/cloudflare-os-starter/commit/c554be66acce6dd9def895ceecc8e39eef44f0d5).
 The existing `deployment.jsonc` and runtime gitlink are preserved.
-The additional changed paths are `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `packages/custom-gatekeeper/vite.config.ts`, `packages/error-reporter/vite.config.ts`, `scripts/deploy.ts`, and `scripts/deploy.test.ts`.
+The additional changed paths are `package.json`, `pnpm-workspace.yaml`, `pnpm-lock.yaml`, `packages/custom-gatekeeper/package.json`, `packages/custom-gatekeeper/vite.config.ts`, `packages/error-reporter/vite.config.ts`, `scripts/deploy.ts`, and `scripts/deploy.test.ts`.
+The compatible dependency range changes below are imported from [`ec17eb7b53f750f54678e8d56c32a9737d1919ec`](https://github.com/totto2727-org/cloudflare-os-starter/commit/ec17eb7b53f750f54678e8d56c32a9737d1919ec) of the same tooling fork and combined with the scoped overrides.
 The README, Japanese deployment guide, and this record also reflect the combined workflow.
 Statements above about unchanged scripts and manifests apply only to the earlier deployment-only snapshot, not the current toolchain.
 
@@ -144,7 +145,7 @@ The deployment script invokes `tsc` directly for the owned custom Gatekeeper and
 Submodule deployment builds still use their separate upstream Vite Plus version with `--no-cache`, as before.
 The upstream runtime workspace still installs its own pinned toolchain separately, as described in the README.
 
-All other shared catalog entries retain the upstream values, including exact Vite `7.3.6`, TypeScript `7.0.2`, and `capnweb-validate` `0.2.4`.
+Other shared catalog entries retain their existing concrete lockfile resolutions, including Vite `7.3.6`, TypeScript `7.0.2`, and `capnweb-validate` `0.2.4`, while their declarations use compatible caret ranges as described below.
 Vite 7 is deliberate: the pinned runtime depends on esbuild's Stage-3 decorator lowering for `@validateRpc()`, rather than the newer Oxc transform.
 The starter narrows its Vite override to standalone Vitest 4 and `@vitest/mocker` 4 so that Vite Plus 1's private Vite core and bundled Vitest 5 are not replaced with Vite 7.
 A scoped `@vitest/browser-preview` override likewise prevents Vite Plus's optional browser-preview 5 dependency from satisfying the standalone package tests' Vitest 4 peer.
@@ -158,4 +159,18 @@ The flexible range permits later compatible releases only when they meet the sam
 Worker tests continue to use the standalone catalog `vitest: ^4.1.10` and `@cloudflare/vitest-pool-workers: ^0.20.2`, never `vp test` or `vite-plus/test`.
 Even the newer Worker pool `0.22.0` [declares Vitest, runner, and snapshot peers of `^4.1.0`](https://registry.npmjs.org/@cloudflare/vitest-pool-workers/0.22.0), whereas [Vite Plus `1.0.0` bundles Vitest `5.0.1`](https://registry.npmjs.org/vite-plus/1.0.0).
 Updating the pool alone would therefore not make Vite Plus's bundled test runner compatible.
-Keep the runtime and test catalog values aligned with the submodule when upgrading its gitlink, and treat the starter's Vite Plus entry and scoped overrides as documented exceptions.
+Keep the shared runtime and test resolved versions aligned with the submodule when upgrading its gitlink, and treat the starter's Vite Plus entry and scoped overrides as documented exceptions.
+
+## Compatible dependency ranges
+
+- **Purpose:** allow compatible dependency releases instead of exact npm requirements in the deployment starter.
+- **Affected areas:** the root and custom Gatekeeper manifests, shared workspace catalog, dependency overrides, and lockfile requirement metadata.
+- **Difference:** `capnweb-validate`, `typescript`, `vite`, and `@types/node` requirements use caret ranges, including scoped Vite peer-resolution overrides and the standalone Vitest 4 browser-preview override at `^4.1.10`.
+- **Operational impact:** frozen installs retain the existing concrete versions and integrity hashes, while later dependency updates can select compatible releases under pnpm's unchanged default minimum release age.
+
+The scoped Vite overrides still constrain standalone Vitest 4 transforms to Vite 7, preserving the esbuild Stage-3 decorator lowering that `@validateRpc()` requires, without replacing Vite Plus 1's private Vite core or bundled Vitest 5.
+The TypeScript range remains on TypeScript 7 because the upstream shared configuration uses `singleThreaded`.
+The starter and upstream runtime install separately, so review shared resolved versions in both lockfiles when updating dependencies to prevent incompatible RPC stub copies.
+Range declarations need not be byte-identical to the upstream catalog, but shared runtime resolutions must remain aligned.
+The upstream runtime's own dependency declarations and lockfile are unchanged by these starter dependency changes.
+Package manager versions, the upstream gitlink, CI action identities, and concrete lockfile resolutions remain reproducibility boundaries rather than dependency range constraints.

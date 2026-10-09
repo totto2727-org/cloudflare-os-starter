@@ -17,7 +17,7 @@
     "deploy": "node scripts/deploy.ts"
   },
   "devDependencies": {
-    "@types/node": "26.1.0",
+    "@types/node": "^26.1.0",
     "jsonc-parser": "^3.3.1",
     "typescript": "catalog:",
     "vite": "catalog:",
