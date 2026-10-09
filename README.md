@@ -31,6 +31,7 @@
 ## Overview
 
 This repository adds deployment controls around a pinned [Cloudflare OS](https://github.com/cloudflare/cloudflare-os) release without modifying the upstream source.
+See [Upstream differences](docs/upstream-differences.md) for maintained deployment-fork dependency policy differences.
 
 | Control | What you own |
 | --- | --- |
