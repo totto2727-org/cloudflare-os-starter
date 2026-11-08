@@ -1,4 +1,7 @@
+import { generateIgnorePatterns } from '@totto2727/gitignore-patterns'
 import { defineConfig } from 'vite-plus'
+
+const ignorePatterns = await generateIgnorePatterns(new URL('.', import.meta.url))
 
 /**
  * Repo-wide toolchain config, ported from the submodule's own `vite.config.ts` so a contributor
@@ -14,6 +17,7 @@ export default defineConfig({
     // still works if invoked directly.
     fmt: false,
   },
+  fmt: { ignorePatterns },
   lint: {
     categories: {
       correctness: 'error',
@@ -65,10 +69,10 @@ export default defineConfig({
       // `gadgets/prefer-jsdoc` rule this file does not load) and its own per-directory overrides.
       // Linting it from here would report findings nobody in this repository can fix.
       'cloudflare-os/**',
+      ...ignorePatterns,
       '**/dist/**',
       '**/generated/**',
       '**/*.gen.ts',
-      '**/node_modules/**',
       '**/.wrangler/**',
       '**/worker-configuration.d.ts',
     ],

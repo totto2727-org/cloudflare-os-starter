@@ -98,12 +98,27 @@ The guide's statements about previously confirmed resource existence are recorde
 - The `cloudflare-os` submodule gitlink is identical in both starter snapshots.
 - [`.gitmodules`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/.gitmodules) still points to `https://github.com/cloudflare/cloudflare-os.git`, not a user-owned runtime fork.
 - The runtime source pinned by that gitlink is therefore unchanged in this comparison.
-- `scripts/`, `packages/`, `package.json`, dependency manifests and lockfile, and the existing official documentation other than the README discovery link are unchanged in the compared snapshots.
+- `scripts/`, `packages/`, and the existing official documentation other than the README discovery link are unchanged in the compared snapshots.
+- The current fork additionally changes `vite.config.ts`, `package.json`, and `pnpm-lock.yaml` for the explicitly requested Gitignore tooling adoption described below.
 - The six-Worker architecture, router-owned public route, private service bindings, Access-mode frontend build, AI Gateway binding transport, storage binding support, validation, dry-run, deployment order, and generated-file cleanup already belong to the official starter.
 
 The authoritative implementation for those existing behaviors is the official [`scripts/deploy.ts`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/scripts/deploy.ts), alongside the official [`README.md`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/README.md) and [`docs/customization.md`](https://github.com/cloudflare/cloudflare-os-starter/blob/3d211477ad009e13a98d863d843e5c12a29ad02b/docs/customization.md).
 Do not describe them as custom implementation work in this fork unless a later source comparison actually shows such a change.
 Repository configuration alone does not prove a successful deployment, correct external Access policies, current resource ownership, gateway availability, or runtime behavior.
+
+## Gitignore tooling customization
+
+Relative to official starter baseline `3d211477ad009e13a98d863d843e5c12a29ad02b`, the fork adds `@totto2727/gitignore-patterns` as a development dependency and uses its root-scoped snapshot for Vite+ formatting and linting.
+This is the minimum tooling divergence requested by the owner, not a runtime or deployment change.
+The manifest and lockfile record the dependency, while `vite.config.ts` retains intentional runtime-submodule and generated-source lint omissions and broader build-directory exclusions.
+The lockfile also removes 14 explicit Cloudflare package tarball URLs while preserving every existing package version and integrity hash, matching the Vite+ resolver's registry-neutral representation.
+Keeping those URLs after adding the helper causes a fresh pnpm supply-chain verification to reject the lockfile with `ERR_PNPM_TARBALL_URL_MISMATCH` when the active registry's published tarball location differs from the recorded npm URL.
+This normalization lets the configured registry select its published location without disabling release-age or integrity verification, and avoids hard-coding a local mirror into the fork.
+Unrelated deprecation metadata changes are not retained.
+The redundant explicit `node_modules` lint exclusion is removed because `.gitignore` already excludes those directories.
+Per-package task-only configurations inherit the workspace lint and formatter policy and need no duplicate helper calls.
+The runtime gitlink remains `6478a1448a11524e2f7c2575ad66fab0bc47c433` and its source is unchanged.
+The upstream-owned runtime checkout remains independently configured and does not receive this helper through the starter's workspace configuration.
 
 ## Maintenance rule for this fork
 
