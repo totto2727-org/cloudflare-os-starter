@@ -111,6 +111,10 @@ Repository configuration alone does not prove a successful deployment, correct e
 Relative to official starter baseline `3d211477ad009e13a98d863d843e5c12a29ad02b`, the fork adds `@totto2727/gitignore-patterns` as a development dependency and uses its root-scoped snapshot for Vite+ formatting and linting.
 This is the minimum tooling divergence requested by the owner, not a runtime or deployment change.
 The manifest and lockfile record the dependency, while `vite.config.ts` retains intentional runtime-submodule and generated-source lint omissions and broader build-directory exclusions.
+The lockfile also removes 14 explicit Cloudflare package tarball URLs while preserving every existing package version and integrity hash, matching the Vite+ resolver's registry-neutral representation.
+Keeping those URLs after adding the helper causes a fresh pnpm supply-chain verification to reject the lockfile with `ERR_PNPM_TARBALL_URL_MISMATCH` when the active registry's published tarball location differs from the recorded npm URL.
+This normalization lets the configured registry select its published location without disabling release-age or integrity verification, and avoids hard-coding a local mirror into the fork.
+Unrelated deprecation metadata changes are not retained.
 The redundant explicit `node_modules` lint exclusion is removed because `.gitignore` already excludes those directories.
 Per-package task-only configurations inherit the workspace lint and formatter policy and need no duplicate helper calls.
 The runtime gitlink remains `6478a1448a11524e2f7c2575ad66fab0bc47c433` and its source is unchanged.
