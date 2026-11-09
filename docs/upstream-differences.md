@@ -120,6 +120,13 @@ Per-package task-only configurations inherit the workspace lint and formatter po
 The runtime gitlink remains `6478a1448a11524e2f7c2575ad66fab0bc47c433` and its source is unchanged.
 The upstream-owned runtime checkout remains independently configured and does not receive this helper through the starter's workspace configuration.
 
+## Local scratch artifact exclusion
+
+Relative to official starter baseline `3d211477ad009e13a98d863d843e5c12a29ad02b`, the root `.gitignore` additionally excludes `/tmp/`.
+This operational fix keeps local scratch evidence from appearing as untracked repository changes and blocking workspace synchronization.
+Only the repository-root scratch directory is affected, with existing generated-file rules and secret handling unchanged.
+Deployment behavior and the runtime source pinned by gitlink `6478a1448a11524e2f7c2575ad66fab0bc47c433` are unchanged.
+
 ## Maintenance rule for this fork
 
 Update this document whenever a change in this starter fork introduces, alters, or removes a difference from its reviewed upstream baseline.
