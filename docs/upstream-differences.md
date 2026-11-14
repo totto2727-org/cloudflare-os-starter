@@ -43,6 +43,14 @@ git diff 3d211477ad009e13a98d863d843e5c12a29ad02b HEAD
 
 During pre-commit review, omit `HEAD` from those two commands to include tracked working-tree changes as well, and inspect `git status --short` for newly added untracked paths.
 
+## Root dependency lifecycle permissions
+
+The root `pnpm-workspace.yaml` retains lifecycle approval only for the resolved esbuild and workerd packages, which run `node install.js` after installation.
+Approvals for `@google/genai`, `core-js-pure`, and `protobufjs` are removed because those packages are absent from the root lockfile graph.
+The approval for locked sharp 0.35.2 is removed because its package metadata contains no `preinstall`, `install`, or `postinstall` script.
+This removes stale root permissions without changing package versions, release-age settings, toolchains, or the upstream runtime submodule and its independent installation policy.
+The upstream comparison baseline remains `3d211477ad009e13a98d863d843e5c12a29ad02b`.
+
 ## Intentional deployment differences
 
 The configuration changes specialize the official starter for the owner's existing environment without changing its deployment implementation.
