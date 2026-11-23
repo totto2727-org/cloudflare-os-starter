@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url'
 import { generateIgnorePatterns } from '@totto2727/gitignore-patterns'
 import { defineConfig } from 'vite-plus'
 
@@ -19,6 +20,7 @@ export default defineConfig({
   },
   fmt: { ignorePatterns },
   lint: {
+    jsPlugins: [fileURLToPath(import.meta.resolve('@totto2727/oxlint'))],
     categories: {
       correctness: 'error',
       suspicious: 'error',
@@ -33,6 +35,11 @@ export default defineConfig({
       es2024: true,
     },
     rules: {
+      'rules/no-eslint-disable-comments': 'error',
+      'rules/no-jsx-script-tag': 'error',
+      'rules/no-optional-error-cause': 'error',
+      'rules/require-disable-reason': 'error',
+      'rules/require-import-extension': 'error',
       // False positives: gatekeepers import `.txt` files as bundled text assets, which the import
       // resolver reports as "no default export".
       'import/default': 'off',
@@ -74,7 +81,6 @@ export default defineConfig({
       '**/generated/**',
       '**/*.gen.ts',
       '**/.wrangler/**',
-      '**/worker-configuration.d.ts',
     ],
     overrides: [
       {
