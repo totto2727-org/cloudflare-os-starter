@@ -130,9 +130,14 @@ The upstream-owned runtime checkout remains independently configured and does no
 
 ## Shared TypeScript lint
 
-Relative to official starter baseline `3d211477ad009e13a98d863d843e5c12a29ad02b`, the existing Vite+ lint command loads the `@totto2727/oxlint` plugin and enforces explicit extensions on local imports, required causes where declared on errors, reasons for lint suppression, and checks for ESLint disable comments and JSX script tags.
-The command checks starter source, tests, configurations, and the tracked Worker declaration without changing the upstream Vite+ version or replacing its lint rules.
-The Cloudflare OS runtime remains at `6478a1448a11524e2f7c2575ad66fab0bc47c433` and continues to lint independently.
+Relative to official starter baseline `3d211477ad009e13a98d863d843e5c12a29ad02b`, the starter uses the shared `@totto2727/oxlint/typescript` preset.
+The `lint:check` and `lint:fix` scripts use standalone Oxlint because the version bundled with the starter's Vite+ release cannot load all preset rules.
+The preset checks the starter's TypeScript source, tests, and configuration.
+The lint configuration selects JavaScript import extensions for Worker packages that emit JavaScript and TypeScript extensions for scripts and tests that run from source.
+The preset excludes the generated Worker declaration.
+The package type check still uses it.
+Changes to Worker code preserve the Cloudflare RPC method contracts, and changes to the deployment script preserve validation and deployment order.
+The Cloudflare OS runtime remains at `6478a1448a11524e2f7c2575ad66fab0bc47c433` and lints independently.
 
 ## Local scratch artifact exclusion
 

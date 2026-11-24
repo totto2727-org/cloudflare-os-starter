@@ -1,15 +1,11 @@
 import { describe, expect, it } from "vitest";
-import {
-  CustomSessionImpl,
-  describeCustomAccount,
-  describeCustomVendor,
-} from "../src/custom.js";
+import { CustomSessionImpl, describeCustomAccount, describeCustomVendor } from "../src/custom.ts";
 
 describe("custom-gatekeeper", () => {
   it("describes an auto-provisioned singleton", () => {
     expect(describeCustomVendor()).toMatchObject({
-      displayName: "Custom Gatekeeper",
       autoProvisionsAccount: true,
+      displayName: "Custom Gatekeeper",
       providesAuth: false,
     });
     expect(describeCustomAccount()).toMatchObject({
@@ -19,31 +15,30 @@ describe("custom-gatekeeper", () => {
   });
 
   it("authorizes the observation before returning deployment information", async () => {
-    let observation: unknown;
-    let disposed = false;
+    const observations = { disposed: false, value: undefined as unknown };
     const session = new CustomSessionImpl(
       {
         authorizeObservation(value: unknown) {
-          observation = value;
+          observations.value = value;
           return Promise.resolve();
         },
         [Symbol.dispose]() {
-          disposed = true;
+          observations.disposed = true;
         },
       },
-      { name: "Acme", message: "Use the internal handbook." },
+      { message: "Use the internal handbook.", name: "Acme" },
     );
 
     await expect(session.getDeploymentInfo()).resolves.toEqual({
-      name: "Acme",
       message: "Use the internal handbook.",
+      name: "Acme",
     });
-    expect(observation).toEqual({
-      title: "Read deployment information",
+    expect(observations.value).toEqual({
       description: "Read the custom information configured by this deployment.",
+      title: "Read deployment information",
     });
 
     session[Symbol.dispose]();
-    expect(disposed).toBe(true);
+    expect(observations.disposed).toBe(true);
   });
 });

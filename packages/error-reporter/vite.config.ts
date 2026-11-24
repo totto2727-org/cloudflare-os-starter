@@ -1,12 +1,12 @@
 // Vite+ per-package settings. See packages/custom-gatekeeper/vite.config.ts for why `build` and
 // `test` are tasks rather than package.json scripts, and what each exclusion buys.
 
-const ownDist = { pattern: '!dist/**', base: 'package' } as const
+const ownDist = { base: 'package', pattern: '!dist/**' } as const
 
 const vitestScratch = [
-  { pattern: '!**/node_modules/.vite/**', base: 'workspace' },
-  { pattern: '!**/node_modules/.vite-temp/**', base: 'workspace' },
-  { pattern: '!**/.wrangler/**', base: 'workspace' },
+  { base: 'workspace', pattern: '!**/node_modules/.vite/**' },
+  { base: 'workspace', pattern: '!**/node_modules/.vite-temp/**' },
+  { base: 'workspace', pattern: '!**/.wrangler/**' },
 ] as const
 
 export default {

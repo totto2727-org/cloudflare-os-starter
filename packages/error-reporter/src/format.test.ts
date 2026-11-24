@@ -1,54 +1,54 @@
 import { describe, expect, it } from "vitest";
-import { formatErrorLog } from "./format.js";
+import { formatErrorLog } from "./format.ts";
 
 describe("formatErrorLog", () => {
   it("adds trusted producer metadata to the bounded event", () => {
     const event = {
-      schemaVersion: 1 as const,
-      occurrenceId: "occurrence-id",
-      occurredAt: "2026-08-04T00:00:00.000Z",
+      exception: { message: "boom", type: "Error" },
       failureSite: "overseer.run-agent",
-      severity: "error" as const,
       handled: false,
-      exception: { type: "Error", message: "boom" },
+      occurredAt: "2026-08-04T00:00:00.000Z",
+      occurrenceId: "occurrence-id",
+      schemaVersion: 1 as const,
+      severity: "error" as const,
     };
 
     expect(formatErrorLog({
-      service: "cloudflare-os",
       environment: "production",
       release: "abc123",
+      service: "cloudflare-os",
     }, event)).toEqual({
-      event: "error_report",
-      service: "cloudflare-os",
       environment: "production",
+      event: "error_report",
       release: "abc123",
+      service: "cloudflare-os",
       ...event,
     });
   });
 
   it("does not let RPC input replace trusted metadata", () => {
     const event = {
-      schemaVersion: 1 as const,
-      occurrenceId: "occurrence-id",
-      occurredAt: "2026-08-04T00:00:00.000Z",
-      failureSite: "site",
-      severity: "error" as const,
-      handled: false,
-      event: "forged",
-      service: "forged",
       environment: "forged",
+      event: "forged",
+      failureSite: "site",
+      handled: false,
+      occurredAt: "2026-08-04T00:00:00.000Z",
+      occurrenceId: "occurrence-id",
       release: "forged",
+      schemaVersion: 1 as const,
+      service: "forged",
+      severity: "error" as const,
     };
 
     expect(formatErrorLog({
-      service: "cloudflare-os",
       environment: "production",
       release: "abc123",
+      service: "cloudflare-os",
     }, event)).toMatchObject({
-      event: "error_report",
-      service: "cloudflare-os",
       environment: "production",
+      event: "error_report",
       release: "abc123",
+      service: "cloudflare-os",
     });
   });
 });

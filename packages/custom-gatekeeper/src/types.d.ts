@@ -7,5 +7,5 @@ export interface CustomDeploymentInfo {
 /** Example read-only capability provided to the CloudflareOS agent. */
 export interface CustomSession {
   /** Returns the deployment's example information after recording an observation. */
-  getDeploymentInfo(): Promise<CustomDeploymentInfo>;
+  getDeploymentInfo: () => Promise<CustomDeploymentInfo>;
 }

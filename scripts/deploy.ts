@@ -1,9 +1,11 @@
 import { existsSync } from "node:fs";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath, pathToFileURL } from "node:url";
-import { dirname, join, relative, resolve } from "node:path";
-import { parse, printParseErrorCode, type ParseError } from "jsonc-parser";
+import { pathToFileURL } from "node:url";
+import nodePath from "node:path";
+
+import { parse, printParseErrorCode } from "jsonc-parser";
+import type { ParseError } from "jsonc-parser";
 import { pnpmCommand } from "../cloudflare-os/scripts/pnpm-command.ts";
 import { resolveBinEntry } from "../cloudflare-os/scripts/bin-entry.ts";
 import { AI_GATEWAY_PROVIDERS } from "./deployment-config.ts";
@@ -16,22 +18,23 @@ import type {
   RouterRoute,
 } from "./deployment-config.ts";
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const { join, relative, resolve } = nodePath;
+const root = resolve(import.meta.dirname, "..");
 // One deployment per checkout; use separate worktrees for concurrent deploys.
 const generatedName = "wrangler.prod.jsonc";
 const packageDirs = {
-  router: "cloudflare-os/packages/router",
-  workshop: "cloudflare-os/packages/workshop-backend",
   context: "cloudflare-os/packages/gatekeeper-context",
-  scheduler: "cloudflare-os/packages/gatekeeper-scheduler",
   customGatekeeper: "packages/custom-gatekeeper",
   errorReporter: "packages/error-reporter",
+  router: "cloudflare-os/packages/router",
+  scheduler: "cloudflare-os/packages/gatekeeper-scheduler",
+  workshop: "cloudflare-os/packages/workshop-backend",
 } as const;
 const generatedPaths = Object.fromEntries(
   Object.entries(packageDirs).map(([name, dir]) => [name, join(root, dir, generatedName)]),
 ) as Record<keyof typeof packageDirs, string>;
 const defaultContextArtifactsNamespace = "gatekeeper-context-collections";
-const accountIdPattern = /^[a-f\d]{32}$/i;
+const accountIdPattern = /^[a-f\d]{32}$/iu;
 
 const requiredPaths = [
   "accountId",
@@ -73,10 +76,23 @@ const resourcePaths = [
   "resources.blueprintContentBucket",
 ];
 
-function valueAt(object: DeploymentConfig, path: string): unknown {
-  return path.split(".").reduce<unknown>(
-    (value, key) => (value as Record<string, unknown> | undefined)?.[key], object);
-}
+const valueAt = (config: DeploymentConfig, field: string): unknown => {
+  const keys = field.split(".");
+  const read = (value: unknown, index: number): unknown => {
+    const key = keys[index];
+    return key === undefined
+      ? value
+      : read((value as Record<string, unknown> | undefined)?.[key], index + 1);
+  };
+  return read(config, 0);
+};
+
+const requireValue = <T>(value: T | undefined, field: string): T => {
+  if (value === undefined) {
+    throw new Error(`Missing required deployment value: ${field}`);
+  }
+  return value;
+};
 
 /**
  * The deployment's public origin: the address the router answers on.
@@ -89,13 +105,15 @@ function valueAt(object: DeploymentConfig, path: string): unknown {
  * `validateConfig` guarantees that one of the two sources below is present, and that they agree when
  * both are.
  */
-export function publicOrigin(config: DeploymentConfig): string {
+export const publicOrigin = (config: DeploymentConfig): string => {
   const explicit = config.publicBaseUrl;
-  if (explicit) return explicit.replace(/\/$/, "");
-  return `https://${config.workers.router.route.customDomain!}`;
-}
+  if (explicit) {
+    return explicit.replace(/\/$/u, "");
+  }
+  return `https://${requireValue(config.workers.router.route.customDomain, "workers.router.route.customDomain")}`;
+};
 
-function validatePublicBaseUrl(config: DeploymentConfig, route: RouterRoute): void {
+const validatePublicBaseUrl = (config: DeploymentConfig, route: RouterRoute): void => {
   const value = config.publicBaseUrl;
   if (value === undefined) {
     throw new Error(
@@ -113,14 +131,13 @@ function validatePublicBaseUrl(config: DeploymentConfig, route: RouterRoute): vo
     return;
   }
   if (typeof value !== "string") {
-    throw new Error("publicBaseUrl must be null or a string.");
+    throw new TypeError("publicBaseUrl must be null or a string.");
   }
-  let origin: string;
-  try {
-    origin = new URL(value).origin;
-  } catch {
+  const url = URL.parse(value);
+  if (!url) {
     throw new Error("publicBaseUrl must be an HTTPS origin such as https://os.example.com.");
   }
+  const { origin } = url;
   if (!value.startsWith("https://") || origin !== value) {
     throw new Error(
       "publicBaseUrl must be an HTTPS origin only, with no path and no trailing slash.");
@@ -141,8 +158,11 @@ function validatePublicBaseUrl(config: DeploymentConfig, route: RouterRoute): vo
     const labels = new URL(value).host.split(".");
     const [worker, subdomain, ...suffix] = labels;
     const routerName = config.workers.router.name;
-    if (labels.length !== 4 || suffix.join(".") !== "workers.dev" ||
-        !/^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/.test(subdomain ?? "")) {
+    if (
+      labels.length !== 4 ||
+      suffix.join(".") !== "workers.dev" ||
+      !/^[a-z\d](?:[a-z\d-]{0,61}[a-z\d])?$/u.test(subdomain ?? "")
+    ) {
       throw new Error(
         `publicBaseUrl (${value}) is not a workers.dev origin. On a workersDev route it must be ` +
         `https://${routerName}.<subdomain>.workers.dev, where <subdomain> is the account's ` +
@@ -157,9 +177,58 @@ function validatePublicBaseUrl(config: DeploymentConfig, route: RouterRoute): vo
         "workers.router.name if the other name is the one you meant.");
     }
   }
-}
+};
 
-export function validateConfig(config: DeploymentConfig): DeploymentConfig {
+const validateAiGateway = (config: DeploymentConfig): void => {
+  if (config.aiGateway.workersAi !== undefined) {
+    throw new Error(
+      "aiGateway.workersAi does nothing: Workers AI rides the same gateway route as every other " +
+        "provider. Leaving the key in place deploys a Workshop with an empty model picker. Delete " +
+        'it; list "cloudflare" in aiGateway.providers to keep Workers AI models.',
+    );
+  }
+  if (typeof config.aiGateway.enabled !== "boolean") {
+    throw new TypeError("AI Gateway enabled must be a boolean.");
+  }
+  if (!config.aiGateway.enabled) {
+    return;
+  }
+
+  const { providers } = config.aiGateway;
+  if (
+    !Array.isArray(providers) ||
+    providers.length === 0 ||
+    !providers.every((provider) => AI_GATEWAY_PROVIDERS.includes(provider))
+  ) {
+    throw new Error(
+      `AI Gateway providers must be a non-empty subset of ${AI_GATEWAY_PROVIDERS.join(", ")}.`,
+    );
+  }
+
+  const gatewayAccountId = config.aiGateway.accountId;
+  if (
+    gatewayAccountId !== undefined &&
+    gatewayAccountId !== null &&
+    (typeof gatewayAccountId !== "string" || !accountIdPattern.test(gatewayAccountId))
+  ) {
+    throw new Error(
+      "aiGateway.accountId must be null or 32 hexadecimal characters. null reuses the " +
+        "deployment's own account, which is what lets the Workers AI binding reach the gateway " +
+        "without an API token.",
+    );
+  }
+};
+
+const validateResourceFields = (config: DeploymentConfig): void => {
+  for (const path of resourcePaths) {
+    const value = valueAt(config, path);
+    if (value === undefined || (value !== null && (typeof value !== "string" || !value))) {
+      throw new Error(`Deployment resource must be null or a non-empty string: ${path}`);
+    }
+  }
+};
+
+const validateRequiredFields = (config: DeploymentConfig): void => {
   const activePaths = [
     ...requiredPaths,
     ...(config.aiGateway?.enabled ? aiGatewayPaths : []),
@@ -172,25 +241,22 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
     }
   }
 
-  for (const path of resourcePaths) {
-    const value = valueAt(config, path);
-    if (value === undefined || value !== null && (typeof value !== "string" || !value)) {
-      throw new Error(`Deployment resource must be null or a non-empty string: ${path}`);
-    }
-  }
+  validateResourceFields(config);
 
-  let activeConfig: DeploymentConfig = config.aiGateway.enabled
+  const gatewayConfig = config.aiGateway.enabled
     ? config
     : { ...config, aiGateway: { enabled: false } };
-  if (!config.errorReporting.enabled) {
-    activeConfig = {
-      ...activeConfig,
-      workers: { ...activeConfig.workers, errorReporter: undefined },
-      errorReporting: { enabled: false },
-    };
+  const activeConfig = config.errorReporting.enabled
+    ? gatewayConfig
+    : {
+        ...gatewayConfig,
+        errorReporting: { enabled: false },
+        workers: { ...gatewayConfig.workers, errorReporter: undefined },
+      };
+  const placeholder = JSON.stringify(activeConfig).match(/<[^>]+>/u)?.[0];
+  if (placeholder) {
+    throw new Error(`Replace deployment placeholder ${placeholder}.`);
   }
-  const placeholder = JSON.stringify(activeConfig).match(/<[^>]+>/)?.[0];
-  if (placeholder) throw new Error(`Replace deployment placeholder ${placeholder}.`);
 
   const stringPaths = activePaths.filter((path) => ![
     "access.admins",
@@ -205,10 +271,12 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   ].includes(path));
   for (const path of stringPaths) {
     if (typeof valueAt(config, path) !== "string") {
-      throw new Error(`Deployment value must be a string: ${path}`);
+      throw new TypeError(`Deployment value must be a string: ${path}`);
     }
   }
+};
 
+const validateWorkers = (config: DeploymentConfig): void => {
   if (!accountIdPattern.test(config.accountId)) {
     throw new Error("Cloudflare account IDs must be 32 hexadecimal characters.");
   }
@@ -219,11 +287,11 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
     throw new Error(
       "Router, Workshop, Context, Scheduler, and custom Gatekeeper names must be unique.");
   }
-  if (!workerNames.every((name) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(name))) {
+  if (!workerNames.every((name) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u.test(name))) {
     throw new Error("Worker names must use lowercase letters, numbers, and hyphens.");
   }
 
-  const route = config.workers.router.route;
+  const { route } = config.workers.router;
   if (!route || Boolean(route.workersDev) === Boolean(route.customDomain)) {
     throw new Error("Set exactly one router route: workersDev or customDomain.");
   }
@@ -233,14 +301,17 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   if (route.customDomain !== undefined && typeof route.customDomain !== "string") {
     throw new Error("Router customDomain must be a string.");
   }
-  const hostnamePattern = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  const hostnamePattern =
+    /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/u;
   if (route.customDomain && !hostnamePattern.test(route.customDomain)) {
     throw new Error("Router customDomain must be a lowercase hostname.");
   }
 
   validatePublicBaseUrl(config, route);
+};
 
-  const sharingDomain = config.context.sharingDomain;
+const validateContextAndAccess = (config: DeploymentConfig): void => {
+  const { sharingDomain } = config.context;
   if (sharingDomain !== null &&
       (typeof sharingDomain !== "string" || !sharingDomain.trim())) {
     throw new Error(
@@ -249,25 +320,27 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
   }
 
   const issuer = new URL(config.access.issuer);
-  if (issuer.protocol !== "https:" ||
-      issuer.origin !== config.access.issuer.replace(/\/$/, "")) {
+  if (issuer.protocol !== "https:" || issuer.origin !== config.access.issuer.replace(/\/$/u, "")) {
     throw new Error("Cloudflare Access issuer must be an HTTPS origin only.");
   }
   if (!config.access.audience.trim() || config.access.audience !== config.access.audience.trim()) {
     throw new Error("Cloudflare Access audience must not be blank or padded with whitespace.");
   }
-  if (!Array.isArray(config.access.admins) ||
-      !config.access.admins.every((email) =>
-        typeof email === "string" && /^[^@\s]+@[^@\s]+$/.test(email))) {
+  if (
+    !Array.isArray(config.access.admins) ||
+    !config.access.admins.every(
+      (email) => typeof email === "string" && /^[^@\s]+@[^@\s]+$/u.test(email),
+    )
+  ) {
     throw new Error("Every Access administrator must be an email address.");
   }
+};
 
-  validateAiGateway(config);
-
+const validateOptionalServices = (config: DeploymentConfig): void => {
   if (typeof config.errorReporting.enabled !== "boolean") {
-    throw new Error("Error reporting enabled must be a boolean.");
+    throw new TypeError("Error reporting enabled must be a boolean.");
   }
-  const release = config.errorReporting.release;
+  const { release } = config.errorReporting;
   if (release !== null && release !== undefined &&
       (typeof release !== "string" || !release.trim() || release !== release.trim())) {
     throw new Error("Error reporting release must be null or a non-padded string.");
@@ -284,29 +357,43 @@ export function validateConfig(config: DeploymentConfig): DeploymentConfig {
     throw new Error("Context Artifacts enabled must be a boolean.");
   }
   const artifactsNamespace = artifactsConfig?.namespace;
-  if (artifactsNamespace !== undefined &&
-      (typeof artifactsNamespace !== "string" ||
-       !/^[a-z\d][a-z\d._-]*$/i.test(artifactsNamespace))) {
-    throw new Error("Context Artifacts namespace must be omitted or start with a letter or number and use only letters, numbers, dots, underscores, and hyphens.");
+  if (
+    artifactsNamespace !== undefined &&
+    (typeof artifactsNamespace !== "string" || !/^[a-z\d][a-z\d._-]*$/iu.test(artifactsNamespace))
+  ) {
+    throw new Error(
+      "Context Artifacts namespace must be omitted or start with a letter or number and use only letters, numbers, dots, underscores, and hyphens.",
+    );
   }
+};
 
+const validateObservability = (config: DeploymentConfig): void => {
   const sampling = config.observability.headSamplingRate;
   if (typeof config.observability.enabled !== "boolean") {
-    throw new Error("Observability enabled must be a boolean.");
+    throw new TypeError("Observability enabled must be a boolean.");
   }
   if (typeof sampling !== "number" || sampling < 0 || sampling > 1) {
     throw new Error("Observability headSamplingRate must be between 0 and 1.");
   }
   if (typeof config.observability.logs.invocationLogs !== "boolean" ||
       typeof config.observability.traces.enabled !== "boolean") {
-    throw new Error("Observability log and trace controls must be booleans.");
+    throw new TypeError("Observability log and trace controls must be booleans.");
   }
   const traceSampling = config.observability.traces.headSamplingRate;
   if (typeof traceSampling !== "number" || traceSampling < 0 || traceSampling > 1) {
     throw new Error("Observability trace sampling must be between 0 and 1.");
   }
+};
+
+export const validateConfig = (config: DeploymentConfig): DeploymentConfig => {
+  validateRequiredFields(config);
+  validateWorkers(config);
+  validateContextAndAccess(config);
+  validateAiGateway(config);
+  validateOptionalServices(config);
+  validateObservability(config);
   return config;
-}
+};
 
 /**
  * How the Workshop reaches AI Gateway, derived rather than configured.
@@ -334,8 +421,10 @@ export interface AiGatewayPlan {
  * read that as cross-account and demand a token for a gateway the binding can reach in-account.
  * Lowercase is also the form the dashboard and the API expect, so it is what the vars carry.
  */
-export function aiGatewayPlan(config: DeploymentConfig): AiGatewayPlan | null {
-  if (!config.aiGateway.enabled) return null;
+export const aiGatewayPlan = (config: DeploymentConfig): AiGatewayPlan | null => {
+  if (!config.aiGateway.enabled) {
+    return null;
+  }
   const deploymentAccountId = config.accountId.toLowerCase();
   const gatewayAccountId = (config.aiGateway.accountId ?? config.accountId).toLowerCase();
   const crossAccount = gatewayAccountId !== deploymentAccountId;
@@ -353,8 +442,8 @@ export function aiGatewayPlan(config: DeploymentConfig): AiGatewayPlan | null {
       "The google provider needs CF_AI_GATEWAY_API_TOKEN: pi's Google adapter refuses a custom " +
       "fetch, so Google inference cannot ride the Workers AI binding transport.");
   }
-  return { gatewayAccountId, crossAccount, needsToken: tokenReasons.length > 0, tokenReasons };
-}
+  return { crossAccount, gatewayAccountId, needsToken: tokenReasons.length > 0, tokenReasons };
+};
 
 /**
  * The deploy-time half of `AiGatewayConfig`'s constructor checks
@@ -362,52 +451,34 @@ export function aiGatewayPlan(config: DeploymentConfig): AiGatewayPlan | null {
  * cloudflare-os/scripts/preview/staging-config.ts. A configuration the backend would reject belongs
  * in a failed `pnpm check`, not in somebody's first chat.
  */
-function validateAiGateway(config: DeploymentConfig): void {
-  if (config.aiGateway.workersAi !== undefined) {
-    throw new Error(
-      "aiGateway.workersAi does nothing: Workers AI rides the same gateway route as every other " +
-      "provider. Leaving the key in place deploys a Workshop with an empty model picker. Delete " +
-      "it; list \"cloudflare\" in aiGateway.providers to keep Workers AI models.");
-  }
-  if (typeof config.aiGateway.enabled !== "boolean") {
-    throw new Error("AI Gateway enabled must be a boolean.");
-  }
-  if (!config.aiGateway.enabled) return;
+const routeConfig = (route: RouterRoute) =>
+  route.workersDev
+    ? { routes: undefined, workers_dev: true }
+    : {
+        routes: [
+          {
+            custom_domain: true,
+            pattern: requireValue(route.customDomain, "workers.router.route.customDomain"),
+          },
+        ],
+        workers_dev: false,
+      };
 
-  const providers = config.aiGateway.providers;
-  if (!Array.isArray(providers) || providers.length === 0 ||
-      !providers.every((provider) => AI_GATEWAY_PROVIDERS.includes(provider))) {
-    throw new Error(
-      `AI Gateway providers must be a non-empty subset of ${AI_GATEWAY_PROVIDERS.join(", ")}.`);
-  }
+const privateRoute: RouterRoute = { workersDev: false };
 
-  const gatewayAccountId = config.aiGateway.accountId;
-  if (gatewayAccountId !== undefined && gatewayAccountId !== null &&
-      (typeof gatewayAccountId !== "string" || !accountIdPattern.test(gatewayAccountId))) {
-    throw new Error(
-      "aiGateway.accountId must be null or 32 hexadecimal characters. null reuses the " +
-      "deployment's own account, which is what lets the Workers AI binding reach the gateway " +
-      "without an API token.");
-  }
-}
-
-function routeConfig(route: RouterRoute) {
-  return route.workersDev
-    ? { workers_dev: true, routes: undefined }
-    : { workers_dev: false, routes: [{ pattern: route.customDomain!, custom_domain: true }] };
-}
-
-function setCommon(
+const setCommon = (
   config: ProdWranglerConfig,
   deployment: DeploymentConfig,
   name: string,
-  route: RouterRoute = { workersDev: false },
-): void {
+  route: RouterRoute = privateRoute,
+): void => {
   config.account_id = deployment.accountId;
   config.name = name;
   config.workers_dev = route.workersDev;
   delete config.routes;
-  if (route.customDomain) Object.assign(config, routeConfig(route));
+  if (route.customDomain) {
+    Object.assign(config, routeConfig(route));
+  }
   // The router is the Access-protected origin, and a preview URL is an unauthenticated path around
   // it. Off on every Worker: the five behind the router have no business being publicly reachable
   // either.
@@ -426,9 +497,10 @@ function setCommon(
       head_sampling_rate: deployment.observability.traces.headSamplingRate,
     },
   };
-}
+};
 
-export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): GeneratedConfigs {
+// oxlint-disable-next-line complexity -- Keep the upstream generator in deployment order for comparison.
+export const generateConfigs = (config: DeploymentConfig, bases: BaseConfigs): GeneratedConfigs => {
   validateConfig(config);
   const router = structuredClone(bases.router);
   const workshop = structuredClone(bases.workshop);
@@ -453,8 +525,8 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   setCommon(workshop, config, config.workers.workshop.name);
   workshop.vars = {
     ADMINS: config.access.admins,
-    CF_ACCESS_ISS: config.access.issuer.replace(/\/$/, ""),
     CF_ACCESS_AUD: config.access.audience,
+    CF_ACCESS_ISS: config.access.issuer.replace(/\/$/u, ""),
     // Upstream builds OAuth redirect URIs and other absolute links from this. The backend has no
     // public route of its own, so the router's origin is the only correct value.
     PUBLIC_BASE_URL: origin,
@@ -464,7 +536,9 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
     Object.assign(workshop.vars, {
       CF_AI_GATEWAY: config.aiGateway.name,
       CF_AI_GATEWAY_ACCOUNT_ID: gateway.gatewayAccountId,
-      CF_AI_GATEWAY_PROVIDERS: config.aiGateway.providers!.join(","),
+      CF_AI_GATEWAY_PROVIDERS: requireValue(config.aiGateway.providers, "aiGateway.providers").join(
+        ",",
+      ),
       ...(gateway.crossAccount ? { CF_AI_GATEWAY_USE_BINDING: "false" } : {}),
     });
     // Only when a token is genuinely needed. On the common path the WORKERS_AI binding is the
@@ -484,34 +558,38 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
   // toMarkdown() runs on.
   workshop.ai = { binding: "WORKERS_AI" };
   workshop.services = [
-    ...(config.errorReporting.enabled ? [{
-      binding: "ERROR_REPORTER",
-      service: config.workers.errorReporter!.name,
-      entrypoint: "ErrorReporter",
-      props: {
-        service: config.workers.workshop.name,
-        environment: config.errorReporting.environment,
-        ...(config.errorReporting.release ? { release: config.errorReporting.release } : {}),
-      },
-    }] : []),
+    ...(config.errorReporting.enabled
+      ? [
+          {
+            binding: "ERROR_REPORTER",
+            entrypoint: "ErrorReporter",
+            props: {
+              environment: config.errorReporting.environment,
+              ...(config.errorReporting.release ? { release: config.errorReporting.release } : {}),
+              service: config.workers.workshop.name,
+            },
+            service: requireValue(config.workers.errorReporter, "workers.errorReporter").name,
+          },
+        ]
+      : []),
     {
       binding: "GATEKEEPER_CONTEXT",
-      service: config.workers.context.name,
       entrypoint: "GatekeeperVendor",
       props: { sharingDomain: config.context.sharingDomain ?? origin },
+      service: config.workers.context.name,
     },
     // No props: unlike Context, the Scheduler scopes nothing to a domain -- its schedules live in
     // its own `ScheduleDriver`/`SchedulerGatekeeper` Durable Objects, which belong to that Worker's
     // script identity and are reached through `ctx.exports` rather than a binding.
     {
       binding: "GATEKEEPER_SCHEDULER",
-      service: config.workers.scheduler.name,
       entrypoint: "GatekeeperVendor",
+      service: config.workers.scheduler.name,
     },
     {
       binding: "GATEKEEPER_CUSTOM",
-      service: config.workers.customGatekeeper.name,
       entrypoint: "GatekeeperVendor",
+      service: config.workers.customGatekeeper.name,
     },
   ];
   workshop.kv_namespaces = [
@@ -548,32 +626,54 @@ export function generateConfigs(config: DeploymentConfig, bases: BaseConfigs): G
 
   setCommon(customGatekeeper, config, config.workers.customGatekeeper.name);
   customGatekeeper.vars = {
-    CUSTOM_NAME: config.customGatekeeper.name,
     CUSTOM_MESSAGE: config.customGatekeeper.message,
+    CUSTOM_NAME: config.customGatekeeper.name,
   };
 
   if (errorReporter) {
-    setCommon(errorReporter, config, config.workers.errorReporter!.name);
+    setCommon(
+      errorReporter,
+      config,
+      requireValue(config.workers.errorReporter, "workers.errorReporter").name,
+    );
   }
 
   return {
-    router, workshop, context, scheduler, customGatekeeper,
+    context,
+    customGatekeeper,
+    router,
+    scheduler,
+    workshop,
     ...(errorReporter && { errorReporter }),
   };
-}
+};
 
 // `--no-cache` goes before the task name. Everything after it is `[ADDITIONAL_ARGS]`, forwarded to
 // the task's own command -- `vp run -F x build --no-cache` reaches `tsc` as an unknown option.
 
 /** `vp run --no-cache <task>` for a package in the submodule's workspace. */
-function submoduleBuild(pkg: string, task = "build"): string[] {
-  return ["--dir", "cloudflare-os", "exec", "vp", "run", "-F", pkg, "--no-cache", task];
-}
+const submoduleBuild = (pkg: string, task = "build"): string[] => [
+  "--dir",
+  "cloudflare-os",
+  "exec",
+  "vp",
+  "run",
+  "-F",
+  pkg,
+  "--no-cache",
+  task,
+];
 
 /** `vp run --no-cache <task>` for a package in this repository's own workspace. */
-function ownBuild(pkg: string, task = "build"): string[] {
-  return ["exec", "vp", "run", "-F", pkg, "--no-cache", task];
-}
+const ownBuild = (pkg: string, task = "build"): string[] => [
+  "exec",
+  "vp",
+  "run",
+  "-F",
+  pkg,
+  "--no-cache",
+  task,
+];
 
 /**
  * The build steps `pnpm check` and `pnpm deploy` run, in order, from the repository root.
@@ -592,82 +692,82 @@ function ownBuild(pkg: string, task = "build"): string[] {
  * The ordering matters at the end: the frontend has to build before the router deploy picks up
  * `../workshop-frontend/dist` as its assets.
  */
-export function buildCommands(config: DeploymentConfig): BuildCommand[] {
-  return [
-    // `build:app` first, and separately. `gatekeeper-context`'s `build` is a package.json script
-    // that spawns `vp run --cache build:app` itself, and the outer `--no-cache` does not reach a
-    // nested invocation carrying its own flag -- measured: the configurator app replayed from
-    // cache. Rebuilding it here from source is what upstream's own `deploy` script does; the
-    // `build` step below then type-checks and replays the bytes this step just wrote.
-    { args: submoduleBuild("@gadgets/gatekeeper-context", "build:app") },
-    { args: submoduleBuild("@gadgets/gatekeeper-context") },
-    // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
-    { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
-    { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
-    { args: ownBuild("custom-gatekeeper") },
-    ...(config.errorReporting.enabled ? [{ args: ownBuild("error-reporter") }] : []),
-    // Access mode is a build-time constant in the frontend bundle (`src/useAuth.ts`), so it is set
-    // here rather than inherited: a bundle built under a different value is wrong, not just stale.
-    { args: submoduleBuild("@gadgets/workshop-frontend"), env: { VITE_CF_ACCESS_MODE: "true" } },
-    { args: submoduleBuild("@gadgets/router") },
-    { args: submoduleBuild("@gadgets/workshop-backend") },
-  ];
-}
+export const buildCommands = (config: DeploymentConfig): BuildCommand[] => [
+  // `build:app` first, and separately. `gatekeeper-context`'s `build` is a package.json script
+  // that spawns `vp run --cache build:app` itself, and the outer `--no-cache` does not reach a
+  // nested invocation carrying its own flag -- measured: the configurator app replayed from
+  // cache. Rebuilding it here from source is what upstream's own `deploy` script does; the
+  // `build` step below then type-checks and replays the bytes this step just wrote.
+  { args: submoduleBuild("@gadgets/gatekeeper-context", "build:app") },
+  { args: submoduleBuild("@gadgets/gatekeeper-context") },
+  // The Scheduler's `build` nests the same cached `vp run build:app`, so it needs the same pair.
+  { args: submoduleBuild("@gadgets/gatekeeper-scheduler", "build:app") },
+  { args: submoduleBuild("@gadgets/gatekeeper-scheduler") },
+  { args: ownBuild("custom-gatekeeper") },
+  ...(config.errorReporting.enabled ? [{ args: ownBuild("error-reporter") }] : []),
+  // Access mode is a build-time constant in the frontend bundle (`src/useAuth.ts`), so it is set
+  // here rather than inherited: a bundle built under a different value is wrong, not just stale.
+  { args: submoduleBuild("@gadgets/workshop-frontend"), env: { VITE_CF_ACCESS_MODE: "true" } },
+  { args: submoduleBuild("@gadgets/router") },
+  { args: submoduleBuild("@gadgets/workshop-backend") },
+];
 
 // `allowTrailingComma` because wrangler accepts them and upstream uses them: the Scheduler's base
 // config closes `build`, `migrations` and `observability` with one. Without the option every such
 // comma is a parse *error*, so the deploy refuses a file wrangler itself reads happily.
 const jsoncOptions = { allowTrailingComma: true };
 
-async function readJsonc<T>(path: string): Promise<T> {
+const readJsonc = async <T>(path: string): Promise<T> => {
   const errors: ParseError[] = [];
-  const result = parse(await readFile(path, "utf8"), errors, jsoncOptions) as T;
+  const result = parse(await readFile(path, "utf-8"), errors, jsoncOptions) as T;
   if (errors.length) {
     const where = relative(root, path) || path;
     throw new Error(`${where}: ${printParseErrorCode(errors[0].error)} at offset ${errors[0].offset}`);
   }
   return result;
-}
+};
 
 // Every validateConfig message names a config path, so say which file those paths live in.
-async function readDeployment(path: string): Promise<DeploymentConfig> {
+const readDeployment = async (path: string): Promise<DeploymentConfig> => {
   const config = await readJsonc<DeploymentConfig>(path);
   try {
     return validateConfig(config);
   } catch (error) {
     throw new Error(`${relative(root, path)}: ${(error as Error).message}`, { cause: error });
   }
-}
+};
 
-function runCommand(
+const runCommand = (
   command: string,
   argv: string[],
   cwd: string,
   env: NodeJS.ProcessEnv,
   label: string,
-): void {
+): void => {
   const result = spawnSync(command, argv, { cwd, env, stdio: "inherit" });
-  if (result.error) throw result.error;
+  if (result.error) {
+    throw result.error;
+  }
   if (result.status !== 0) {
     const where = relative(root, cwd) || ".";
     throw new Error(`${where}: ${label} failed. Its output is above.`);
   }
-}
+};
 
 // Spawned through pnpmCommand rather than as a bare "pnpm": on Windows the pnpm on PATH is a `.cmd`
 // shim Node refuses to spawn without a shell, and `shell: true` would re-split argv and break any
 // checkout path containing a space.
-function run(args: string[], cwd = root, env: NodeJS.ProcessEnv = process.env): void {
+const run = (args: string[], cwd = root, env: NodeJS.ProcessEnv = process.env): void => {
   const [command, argv] = pnpmCommand(args, env);
   runCommand(command, argv, cwd, env, `pnpm ${args.join(" ")}`);
-}
+};
 
 /**
  * `wrangler deploy` for one package, spawned as `node <entry>` when the entry point behind the
  * `.bin` shim can be found. That saves the ~0.33s `pnpm exec` costs per call and sidesteps the
  * Windows `.cmd` shim entirely; when it cannot be resolved, the pnpm path is still there.
  */
-function deployWorker(dir: string, extraArgs: string[]): void {
+const deployWorker = (dir: string, extraArgs: string[]): void => {
   const cwd = join(root, dir);
   const args = ["deploy", "--config", generatedName, ...extraArgs];
   const entry = resolveBinEntry(cwd, "wrangler");
@@ -676,22 +776,22 @@ function deployWorker(dir: string, extraArgs: string[]): void {
   } else {
     run(["exec", "wrangler", ...args], cwd);
   }
-}
+};
 
-function requireSubmodule(): void {
+const requireSubmodule = (): void => {
   if (!existsSync(join(root, "cloudflare-os/package.json"))) {
     throw new Error("CloudflareOS submodule is not initialized. Run git submodule update --init.");
   }
-}
+};
 
-function build(config: DeploymentConfig): void {
+const build = (config: DeploymentConfig): void => {
   for (const { args, env } of buildCommands(config)) {
     run(args, root, env ? { ...process.env, ...env } : process.env);
   }
-}
+};
 
 // Said once, up front, rather than discovered when the first chat throws.
-function reportAiGateway(config: DeploymentConfig): void {
+const reportAiGateway = (config: DeploymentConfig): void => {
   const gateway = aiGatewayPlan(config);
   if (!gateway) {
     console.warn(
@@ -700,38 +800,45 @@ function reportAiGateway(config: DeploymentConfig): void {
       "empty model picker -- see docs/migrate-from-hosted.md.");
     return;
   }
-  if (!gateway.needsToken) return;
+  if (!gateway.needsToken) {
+    return;
+  }
   // CLOUDFLARE_ACCOUNT_ID pins the account the way the deploys themselves are pinned: every
   // generated config carries `account_id`, but `wrangler secret put` takes only `--name`
   console.warn(
-    `\nCF_AI_GATEWAY_API_TOKEN is required by this configuration:\n` +
-    gateway.tokenReasons.map((reason) => `  - ${reason}`).join("\n") +
-    `\nInstall it before deploying:\n  CLOUDFLARE_ACCOUNT_ID=${config.accountId} ` +
-    `pnpm exec wrangler secret put CF_AI_GATEWAY_API_TOKEN ` +
-    `--name ${config.workers.workshop.name}\n`);
-}
+    `\nCF_AI_GATEWAY_API_TOKEN is required by this configuration:\n${gateway.tokenReasons
+      .map((reason) => `  - ${reason}`)
+      .join("\n")}\nInstall it before deploying:\n  CLOUDFLARE_ACCOUNT_ID=${config.accountId} ` +
+      `pnpm exec wrangler secret put CF_AI_GATEWAY_API_TOKEN ` +
+      `--name ${config.workers.workshop.name}\n`,
+  );
+};
 
-async function main(): Promise<void> {
+const main = async (): Promise<void> => {
   requireSubmodule();
   const config = await readDeployment(join(root, "deployment.jsonc"));
   const generated = generateConfigs(config, {
-    router: await readJsonc(join(root, packageDirs.router, "wrangler.jsonc")),
-    workshop: await readJsonc(join(root, packageDirs.workshop, "wrangler.jsonc")),
     context: await readJsonc(join(root, packageDirs.context, "wrangler.jsonc")),
-    scheduler: await readJsonc(join(root, packageDirs.scheduler, "wrangler.jsonc")),
     customGatekeeper: await readJsonc(join(root, packageDirs.customGatekeeper, "wrangler.jsonc")),
     errorReporter: await readJsonc(join(root, packageDirs.errorReporter, "wrangler.jsonc")),
+    router: await readJsonc(join(root, packageDirs.router, "wrangler.jsonc")),
+    scheduler: await readJsonc(join(root, packageDirs.scheduler, "wrangler.jsonc")),
+    workshop: await readJsonc(join(root, packageDirs.workshop, "wrangler.jsonc")),
   });
   reportAiGateway(config);
 
   try {
     for (const [name, generatedConfig] of Object.entries(generated)) {
+      // oxlint-disable-next-line no-await-in-loop -- All writes must settle before cleanup starts.
       await writeFile(
         generatedPaths[name as keyof typeof generatedPaths],
-        JSON.stringify(generatedConfig, null, 2) + "\n");
+        `${JSON.stringify(generatedConfig, null, 2)}\n`,
+      );
     }
     const check = process.argv.includes("--check");
-    if (check) run(["test"]);
+    if (check) {
+      run(["test"]);
+    }
     build(config);
     const deployArgs = check ? ["--dry-run"] : [];
     if (config.errorReporting.enabled) {
@@ -746,7 +853,7 @@ async function main(): Promise<void> {
   } finally {
     await Promise.all(Object.values(generatedPaths).map((path) => rm(path, { force: true })));
   }
-}
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   try {

@@ -1,6 +1,6 @@
 import type { ErrorEventV1, ErrorReporterProps } from "@gadgets/error-reporting";
 
-export function formatErrorLog(props: ErrorReporterProps, report: ErrorEventV1) {
+export const formatErrorLog = (props: ErrorReporterProps, report: ErrorEventV1) => {
   const event = { ...report } as Record<string, unknown>;
   delete event.event;
   delete event.service;

@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { parse, type ParseError } from "jsonc-parser";
+import { parse } from "jsonc-parser";
+import type { ParseError } from "jsonc-parser";
 import { aiGatewayPlan, buildCommands, generateConfigs, validateConfig } from "./deploy.ts";
 import type {
   BaseConfigs,
@@ -10,45 +11,53 @@ import type {
   ProdWranglerConfig,
 } from "./deployment-config.ts";
 
+const present = <T>(value: T | null | undefined): T => {
+  assert.ok(
+    value !== null && value !== undefined,
+    "Expected the generated configuration value to exist",
+  );
+  return value;
+};
+
 const validConfig: DeploymentConfig = {
-  accountId: "0123456789abcdef0123456789abcdef",
-  publicBaseUrl: null,
-  workers: {
-    router: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
-    workshop: { name: "acme-cloudflare-os-backend" },
-    context: { name: "acme-cloudflare-os-context" },
-    scheduler: { name: "acme-cloudflare-os-scheduler" },
-    customGatekeeper: { name: "acme-cloudflare-os-custom" },
-    errorReporter: { name: "acme-cloudflare-os-errors" },
-  },
   access: {
-    issuer: "https://acme.cloudflareaccess.com",
-    audience: "access-audience",
     admins: ["admin@example.com"],
+    audience: "access-audience",
+    issuer: "https://acme.cloudflareaccess.com",
   },
+  accountId: "0123456789abcdef0123456789abcdef",
   aiGateway: {
+    accountId: null,
     enabled: true,
     name: "cloudflare-os",
-    accountId: null,
     providers: ["anthropic", "cloudflare"],
   },
   context: {
-    sharingDomain: null,
-    kvNamespaceId: "context-kv-id",
     artifacts: { enabled: true, namespace: "acme-context-collections" },
+    kvNamespaceId: "context-kv-id",
+    sharingDomain: null,
   },
-  customGatekeeper: { name: "Acme", message: "Use the company handbook." },
+  customGatekeeper: { message: "Use the company handbook.", name: "Acme" },
   errorReporting: { enabled: true, environment: "production", release: "abc123" },
-  resources: {
-    blueprintsKvNamespaceId: "blueprints-kv-id",
-    avatarsKvNamespaceId: "avatars-kv-id",
-    blueprintContentBucket: "cloudflare-os-blueprints",
-  },
   observability: {
     enabled: true,
     headSamplingRate: 0.5,
     logs: { invocationLogs: false },
     traces: { enabled: true, headSamplingRate: 0.25 },
+  },
+  publicBaseUrl: null,
+  resources: {
+    avatarsKvNamespaceId: "avatars-kv-id",
+    blueprintContentBucket: "cloudflare-os-blueprints",
+    blueprintsKvNamespaceId: "blueprints-kv-id",
+  },
+  workers: {
+    context: { name: "acme-cloudflare-os-context" },
+    customGatekeeper: { name: "acme-cloudflare-os-custom" },
+    errorReporter: { name: "acme-cloudflare-os-errors" },
+    router: { name: "acme-cloudflare-os", route: { customDomain: "os.example.com" } },
+    scheduler: { name: "acme-cloudflare-os-scheduler" },
+    workshop: { name: "acme-cloudflare-os-backend" },
   },
 };
 
@@ -59,136 +68,250 @@ const validConfig: DeploymentConfig = {
  * `validateConfig` exists to catch: `deployment.jsonc` is hand-edited JSONC with no schema behind
  * it, so the type describes the valid shape rather than guaranteeing what is on disk.
  */
-function variant(mutate: (config: Record<string, any>) => void): DeploymentConfig {
-  const config = structuredClone(validConfig) as Record<string, any>;
+// oxlint-disable-next-line typescript/no-explicit-any -- These tests mutate arbitrary invalid input to exercise runtime validation.
+const variant = (mutate: (config: Record<string, any>) => void): DeploymentConfig => {
+  const config = structuredClone(validConfig) as unknown as Parameters<typeof mutate>[0];
   mutate(config);
   return config as DeploymentConfig;
-}
-
-// Read from disk rather than inlined, including the Error Reporter's: deploy.ts derives every
-// generated config from these files, so a copy here could drift from what actually ships.
-async function baseConfigs(): Promise<BaseConfigs> {
-  return {
-    router: await baseConfig("../cloudflare-os/packages/router/wrangler.jsonc"),
-    workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
-    context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
-    scheduler: await baseConfig("../cloudflare-os/packages/gatekeeper-scheduler/wrangler.jsonc"),
-    customGatekeeper: await baseConfig("../packages/custom-gatekeeper/wrangler.jsonc"),
-    errorReporter: await baseConfig("../packages/error-reporter/wrangler.jsonc"),
-  };
-}
+};
 
 // Parsed the way `deploy.ts` parses it, errors included. Swallowing them would let a base config
 // that the deploy cannot read still pass these tests on a best-effort parse -- which is how the
 // Scheduler's trailing commas hid: nine parse errors, and a config object that still looked usable.
-async function baseConfig(path: string): Promise<ProdWranglerConfig> {
+const baseConfig = async (path: string): Promise<ProdWranglerConfig> => {
   const errors: ParseError[] = [];
-  const result = parse(
-    await readFile(new URL(path, import.meta.url), "utf8"),
-    errors,
-    { allowTrailingComma: true },
-  ) as ProdWranglerConfig;
+  const result = parse(await readFile(new URL(path, import.meta.url), "utf-8"), errors, {
+    allowTrailingComma: true,
+  }) as ProdWranglerConfig;
   assert.deepEqual(errors, [], `${path} did not parse cleanly`);
   return result;
-}
+};
+
+// Read from disk rather than inlined, including the Error Reporter's: deploy.ts derives every
+// generated config from these files, so a copy here could drift from what actually ships.
+const baseConfigs = async (): Promise<BaseConfigs> => ({
+  context: await baseConfig("../cloudflare-os/packages/gatekeeper-context/wrangler.jsonc"),
+  customGatekeeper: await baseConfig("../packages/custom-gatekeeper/wrangler.jsonc"),
+  errorReporter: await baseConfig("../packages/error-reporter/wrangler.jsonc"),
+  router: await baseConfig("../cloudflare-os/packages/router/wrangler.jsonc"),
+  scheduler: await baseConfig("../cloudflare-os/packages/gatekeeper-scheduler/wrangler.jsonc"),
+  workshop: await baseConfig("../cloudflare-os/packages/workshop-backend/wrangler.jsonc"),
+});
 
 /** The Context data-isolation boundary carried by the Workshop's Gatekeeper binding. */
-function sharingDomain(generated: GeneratedConfigs): unknown {
-  return generated.workshop.services!
-    .find((service) => service.binding === "GATEKEEPER_CONTEXT")!.props!.sharingDomain;
-}
+const sharingDomain = (generated: GeneratedConfigs): unknown => {
+  const service = present(generated.workshop.services).find(
+    (item) => item.binding === "GATEKEEPER_CONTEXT",
+  );
+  return present(present(service).props).sharingDomain;
+};
 
 test("rejects deployment placeholders", () => {
   assert.throws(
-    () => validateConfig(variant((c) => { c.accountId = "<CLOUDFLARE_ACCOUNT_ID>"; })),
-    /placeholder/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.accountId = "<CLOUDFLARE_ACCOUNT_ID>";
+        }),
+      ),
+    /placeholder/iu,
+  );
 });
 
 test("rejects destructive or malformed deployment values", () => {
   const duplicateWorkers = structuredClone(validConfig);
   duplicateWorkers.workers.context.name = duplicateWorkers.workers.workshop.name;
-  assert.throws(() => validateConfig(duplicateWorkers), /unique/i);
+  assert.throws(() => validateConfig(duplicateWorkers), /unique/iu);
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.observability.enabled = "true"; })), /boolean/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.observability.enabled = "true";
+        }),
+      ),
+    /boolean/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => {
-      c.workers.router.route.customDomain = "os.example.com/path";
-    })), /hostname/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.workers.router.route.customDomain = "os.example.com/path";
+        }),
+      ),
+    /hostname/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.sharingDomain = ""; })),
-    /sharingDomain must be null or a non-empty string/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.sharingDomain = "";
+        }),
+      ),
+    /sharingDomain must be null or a non-empty string/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.access.issuer += "/team"; })), /issuer.*origin/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.access.issuer += "/team";
+        }),
+      ),
+    /issuer.*origin/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.access.audience = "   "; })), /audience/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.access.audience = "   ";
+        }),
+      ),
+    /audience/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.access.audience = " access-audience "; })), /audience/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.access.audience = " access-audience ";
+        }),
+      ),
+    /audience/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.access.admins = ["bad-address"]; })), /email/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.access.admins = ["bad-address"];
+        }),
+      ),
+    /email/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => {
-      c.observability.traces.headSamplingRate = 2;
-    })), /sampling/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.observability.traces.headSamplingRate = 2;
+        }),
+      ),
+    /sampling/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.artifacts.enabled = "true"; })),
-    /Artifacts enabled.*boolean/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.artifacts.enabled = "true";
+        }),
+      ),
+    /Artifacts enabled.*boolean/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.artifacts = null; })),
-    /Artifacts configuration.*object/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.artifacts = null;
+        }),
+      ),
+    /Artifacts configuration.*object/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.artifacts = []; })),
-    /Artifacts configuration.*object/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.artifacts = [];
+        }),
+      ),
+    /Artifacts configuration.*object/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.artifacts.namespace = null; })),
-    /namespace must be omitted/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.artifacts.namespace = null;
+        }),
+      ),
+    /namespace must be omitted/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.context.artifacts.namespace = "context/collections"; })),
-    /namespace must be omitted/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.context.artifacts.namespace = "context/collections";
+        }),
+      ),
+    /namespace must be omitted/iu,
+  );
 });
 
 test("rejects AI Gateway keys that no longer do anything", () => {
   // A silently-ignored workersAi block is how a deploy succeeds with an empty model picker.
   assert.throws(
-    () => validateConfig(variant((c) => { c.aiGateway.workersAi = { mode: "gateway" }; })),
-    /aiGateway\.workersAi does nothing/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.aiGateway.workersAi = { mode: "gateway" };
+        }),
+      ),
+    /aiGateway\.workersAi does nothing/iu,
+  );
   // Even with AI off: the key means the operator believes it still does something.
   assert.throws(
-    () => validateConfig(variant((c) => {
-      c.aiGateway = { enabled: false, workersAi: { mode: "direct" } };
-    })),
-    /aiGateway\.workersAi does nothing/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.aiGateway = { enabled: false, workersAi: { mode: "direct" } };
+        }),
+      ),
+    /aiGateway\.workersAi does nothing/iu,
+  );
 });
 
 test("rejects malformed AI Gateway providers and account", () => {
   assert.throws(
-    () => validateConfig(variant((c) => { c.aiGateway.providers = []; })),
-    /Missing required deployment value: aiGateway.providers/);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.aiGateway.providers = [];
+        }),
+      ),
+    /Missing required deployment value: aiGateway.providers/u,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.aiGateway.providers = ["anthropic", "mistral"]; })),
-    /providers must be a non-empty subset/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.aiGateway.providers = ["anthropic", "mistral"];
+        }),
+      ),
+    /providers must be a non-empty subset/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.aiGateway.accountId = "not-an-account"; })),
-    /aiGateway.accountId must be null or 32 hexadecimal/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.aiGateway.accountId = "not-an-account";
+        }),
+      ),
+    /aiGateway.accountId must be null or 32 hexadecimal/iu,
+  );
 });
 
 test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", async () => {
   const generated = generateConfigs(validConfig, await baseConfigs());
-  const vars = generated.workshop.vars!;
+  const vars = present(generated.workshop.vars);
 
   assert.equal(generated.workshop.name, "acme-cloudflare-os-backend");
   assert.deepEqual(vars.ADMINS, ["admin@example.com"]);
@@ -201,57 +324,61 @@ test("generates Access-mode Workshop, Context, and custom Gatekeeper configs", a
   assert.deepEqual(generated.workshop.services, [
     {
       binding: "ERROR_REPORTER",
-      service: "acme-cloudflare-os-errors",
       entrypoint: "ErrorReporter",
       props: {
-        service: "acme-cloudflare-os-backend",
         environment: "production",
         release: "abc123",
+        service: "acme-cloudflare-os-backend",
       },
+      service: "acme-cloudflare-os-errors",
     },
     {
       binding: "GATEKEEPER_CONTEXT",
-      service: "acme-cloudflare-os-context",
       entrypoint: "GatekeeperVendor",
       props: { sharingDomain: "https://os.example.com" },
+      service: "acme-cloudflare-os-context",
     },
     {
       binding: "GATEKEEPER_SCHEDULER",
-      service: "acme-cloudflare-os-scheduler",
       entrypoint: "GatekeeperVendor",
+      service: "acme-cloudflare-os-scheduler",
     },
     {
       binding: "GATEKEEPER_CUSTOM",
-      service: "acme-cloudflare-os-custom",
       entrypoint: "GatekeeperVendor",
+      service: "acme-cloudflare-os-custom",
     },
   ]);
   assert.deepEqual(generated.workshop.kv_namespaces, [
     { binding: "BLUEPRINTS", id: "blueprints-kv-id" },
     { binding: "AVATARS", id: "avatars-kv-id" },
   ]);
-  assert.equal(generated.workshop.r2_buckets![0].bucket_name, "cloudflare-os-blueprints");
+  assert.equal(present(generated.workshop.r2_buckets)[0].bucket_name, "cloudflare-os-blueprints");
   assert.equal(generated.context.name, "acme-cloudflare-os-context");
-  assert.equal(generated.context.kv_namespaces![0].id, "context-kv-id");
+  assert.equal(present(generated.context.kv_namespaces)[0].id, "context-kv-id");
   assert.deepEqual(generated.context.artifacts, [{
     binding: "ARTIFACTS",
     namespace: "acme-context-collections",
   }]);
   assert.equal(generated.customGatekeeper.name, "acme-cloudflare-os-custom");
   assert.deepEqual(generated.customGatekeeper.vars, {
-    CUSTOM_NAME: "Acme",
     CUSTOM_MESSAGE: "Use the company handbook.",
+    CUSTOM_NAME: "Acme",
   });
-  assert.equal(generated.errorReporter!.name, "acme-cloudflare-os-errors");
-  assert.deepEqual(generated.workshop.observability!.logs, {
+  assert.equal(present(generated.errorReporter).name, "acme-cloudflare-os-errors");
+  assert.deepEqual(present(generated.workshop.observability).logs, {
     invocation_logs: false,
   });
-  assert.deepEqual(generated.workshop.observability!.traces, {
+  assert.deepEqual(present(generated.workshop.observability).traces, {
     enabled: true,
     head_sampling_rate: 0.25,
   });
-  assert.equal(generated.workshop.services!.some(
-    (service) => service.binding === "FRONTEND_ERROR_REPORTER"), false);
+  assert.equal(
+    present(generated.workshop.services).some(
+      (service) => service.binding === "FRONTEND_ERROR_REPORTER",
+    ),
+    false,
+  );
 });
 
 test("gives the router the public route, the frontend, and every service binding", async () => {
@@ -260,7 +387,7 @@ test("gives the router the public route, the frontend, and every service binding
 
   assert.equal(generated.router.name, "acme-cloudflare-os");
   assert.equal(generated.router.workers_dev, false);
-  assert.deepEqual(generated.router.routes, [{ pattern: "os.example.com", custom_domain: true }]);
+  assert.deepEqual(generated.router.routes, [{ custom_domain: true, pattern: "os.example.com" }]);
   // No entrypoint on any of the three: the router forwards whole HTTP requests rather than making
   // vendor RPC calls, and the binding name is what selects the /gatekeeper/<name> path.
   assert.deepEqual(generated.router.services, [
@@ -272,10 +399,12 @@ test("gives the router the public route, the frontend, and every service binding
   // Inherited untouched: the base config already carries the ASSETS binding, the SPA fallback, and
   // the /gatekeeper/* prefix an OAuth Gatekeeper redirect needs.
   assert.deepEqual(generated.router.assets, bases.router.assets);
-  assert.equal(generated.router.assets!.binding, "ASSETS");
-  assert.equal(generated.router.assets!.directory, "../workshop-frontend/dist");
-  assert.ok(generated.router.assets!.run_worker_first!.includes("/gatekeeper/*"),
-    JSON.stringify(generated.router.assets));
+  assert.equal(present(generated.router.assets).binding, "ASSETS");
+  assert.equal(present(generated.router.assets).directory, "../workshop-frontend/dist");
+  assert.ok(
+    present(present(generated.router.assets).run_worker_first).includes("/gatekeeper/*"),
+    JSON.stringify(generated.router.assets),
+  );
 });
 
 /**
@@ -292,19 +421,23 @@ test("deploys the ambient Scheduler Gatekeeper the hosted flow preinstalls", asy
   // Reached by both, for the two different things a Gatekeeper does: vendor RPC from the backend,
   // and whole HTTP requests under /gatekeeper/scheduler from the router.
   assert.deepEqual(
-    generated.workshop.services!.find((service) => service.binding === "GATEKEEPER_SCHEDULER"),
+    present(generated.workshop.services).find(
+      (service) => service.binding === "GATEKEEPER_SCHEDULER",
+    ),
     {
       binding: "GATEKEEPER_SCHEDULER",
-      service: "acme-cloudflare-os-scheduler",
       entrypoint: "GatekeeperVendor",
+      service: "acme-cloudflare-os-scheduler",
     });
   assert.deepEqual(
-    generated.router.services!.find((service) => service.binding === "GATEKEEPER_SCHEDULER"),
+    present(generated.router.services).find(
+      (service) => service.binding === "GATEKEEPER_SCHEDULER",
+    ),
     { binding: "GATEKEEPER_SCHEDULER", service: "acme-cloudflare-os-scheduler" });
 
   // Its Durable Object history has to arrive verbatim: those classes are where the schedules live.
   assert.deepEqual(generated.scheduler.migrations, bases.scheduler.migrations);
-  assert.ok(generated.scheduler.migrations!.length > 0, "scheduler lost its DO migrations");
+  assert.ok(present(generated.scheduler.migrations).length > 0, "scheduler lost its DO migrations");
   // No configuration surface of its own -- which is what makes it installable with no user input
   // upstream, and deployable here from nothing but a Worker name.
   assert.equal(generated.scheduler.vars, undefined);
@@ -342,9 +475,11 @@ test("scopes PUBLIC_BASE_URL and Context sharing to the public origin", async ()
   const derived = generateConfigs(validConfig, await baseConfigs());
   const explicit = generateConfigs(onWorkersDev, await baseConfigs());
 
-  assert.equal(derived.workshop.vars!.PUBLIC_BASE_URL, "https://os.example.com");
+  assert.equal(present(derived.workshop.vars).PUBLIC_BASE_URL, "https://os.example.com");
   assert.equal(
-    explicit.workshop.vars!.PUBLIC_BASE_URL, "https://acme-cloudflare-os.acme.workers.dev");
+    present(explicit.workshop.vars).PUBLIC_BASE_URL,
+    "https://acme-cloudflare-os.acme.workers.dev",
+  );
   assert.equal(explicit.router.workers_dev, true);
   assert.equal(explicit.router.routes, undefined);
 
@@ -356,32 +491,62 @@ test("scopes PUBLIC_BASE_URL and Context sharing to the public origin", async ()
   const pinned = generateConfigs(
     variant((c) => { c.context.sharingDomain = "production"; }), await baseConfigs());
   assert.equal(sharingDomain(pinned), "production");
-  assert.equal(pinned.workshop.vars!.PUBLIC_BASE_URL, "https://os.example.com");
+  assert.equal(present(pinned.workshop.vars).PUBLIC_BASE_URL, "https://os.example.com");
 });
 
-test("rejects a public origin it cannot derive or cannot trust", async () => {
+test("rejects a public origin it cannot derive or cannot trust", () => {
   // Nothing in deployment.jsonc names the account's workers.dev subdomain, and PUBLIC_BASE_URL and
   // the Context sharing boundary both need an origin, so this cannot be left to a fallback.
   assert.throws(
-    () => validateConfig(variant((c) => { c.workers.router.route = { workersDev: true }; })),
-    /publicBaseUrl is required on a workersDev route/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.workers.router.route = { workersDev: true };
+        }),
+      ),
+    /publicBaseUrl is required on a workersDev route/iu,
+  );
 
   // Scoping Context data to a hostname the deployment does not answer on hides its collections.
   assert.throws(
-    () => validateConfig(variant((c) => { c.publicBaseUrl = "https://other.example.com"; })),
-    /does not match workers.router.route.customDomain/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.publicBaseUrl = "https://other.example.com";
+        }),
+      ),
+    /does not match workers.router.route.customDomain/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.publicBaseUrl = "https://os.example.com/"; })),
-    /HTTPS origin only/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.publicBaseUrl = "https://os.example.com/";
+        }),
+      ),
+    /HTTPS origin only/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { c.publicBaseUrl = "http://os.example.com"; })),
-    /HTTPS origin only/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          c.publicBaseUrl = "http://os.example.com";
+        }),
+      ),
+    /HTTPS origin only/iu,
+  );
 
   assert.throws(
-    () => validateConfig(variant((c) => { delete c.publicBaseUrl; })),
-    /publicBaseUrl must be present/i);
+    () =>
+      validateConfig(
+        variant((c) => {
+          delete c.publicBaseUrl;
+        }),
+      ),
+    /publicBaseUrl must be present/iu,
+  );
 });
 
 test("rejects a workersDev origin that is not the router's own", async () => {
@@ -395,22 +560,27 @@ test("rejects a workersDev origin that is not the router's own", async () => {
   // the Context isolation boundary.
   assert.throws(
     () => validateConfig(onWorkersDev("https://acme-cloudflare-o.acme.workers.dev")),
-    /names Worker "acme-cloudflare-o", but the router is "acme-cloudflare-os"/);
+    /names Worker "acme-cloudflare-o", but the router is "acme-cloudflare-os"/u,
+  );
 
   assert.throws(
     () => validateConfig(onWorkersDev("https://os.example.com")),
-    /not a workers.dev origin/i);
+    /not a workers.dev origin/iu,
+  );
 
   // A deeper name is a preview URL or an unrelated host, not the route wrangler serves.
   assert.throws(
     () => validateConfig(onWorkersDev("https://staging.acme-cloudflare-os.acme.workers.dev")),
-    /not a workers.dev origin/i);
+    /not a workers.dev origin/iu,
+  );
 
   // The shape wrangler actually serves stays valid, whatever the account subdomain is.
   const generated = generateConfigs(
     onWorkersDev("https://acme-cloudflare-os.some-account.workers.dev"), await baseConfigs());
   assert.equal(
-    generated.workshop.vars!.PUBLIC_BASE_URL, "https://acme-cloudflare-os.some-account.workers.dev");
+    present(generated.workshop.vars).PUBLIC_BASE_URL,
+    "https://acme-cloudflare-os.some-account.workers.dev",
+  );
 
   // The rule is scoped to the workersDev route. A custom domain has its own hostname, unrelated to
   // any Worker name, and is checked against `customDomain` instead -- both spellings stay valid.
@@ -422,7 +592,7 @@ test("rejects a workersDev origin that is not the router's own", async () => {
 
 test("routes AI Gateway over the Workers AI binding without an API token", async () => {
   const generated = generateConfigs(validConfig, await baseConfigs());
-  const vars = generated.workshop.vars!;
+  const vars = present(generated.workshop.vars);
 
   assert.equal(vars.CF_AI_GATEWAY_ACCOUNT_ID, validConfig.accountId);
   // Absent, not "true": the backend takes the binding whenever it is bound, and the binding is
@@ -430,8 +600,8 @@ test("routes AI Gateway over the Workers AI binding without an API token", async
   assert.equal(vars.CF_AI_GATEWAY_USE_BINDING, undefined);
   assert.equal(generated.workshop.secrets, undefined);
   assert.deepEqual(aiGatewayPlan(validConfig), {
-    gatewayAccountId: validConfig.accountId,
     crossAccount: false,
+    gatewayAccountId: validConfig.accountId,
     needsToken: false,
     tokenReasons: [],
   });
@@ -440,14 +610,14 @@ test("routes AI Gateway over the Workers AI binding without an API token", async
 test("requires a token for a gateway in another account", async () => {
   const config = variant((c) => { c.aiGateway.accountId = "fedcba9876543210fedcba9876543210"; });
   const generated = generateConfigs(config, await baseConfigs());
-  const vars = generated.workshop.vars!;
+  const vars = present(generated.workshop.vars);
 
   assert.equal(vars.CF_AI_GATEWAY_ACCOUNT_ID, "fedcba9876543210fedcba9876543210");
   assert.equal(vars.CF_AI_GATEWAY_USE_BINDING, "false");
   assert.deepEqual(generated.workshop.secrets, { required: ["CF_AI_GATEWAY_API_TOKEN"] });
   // The Workers AI binding stays bound: webFetch's toMarkdown() runs on it too.
   assert.deepEqual(generated.workshop.ai, { binding: "WORKERS_AI" });
-  assert.equal(aiGatewayPlan(config)!.tokenReasons.length, 1);
+  assert.equal(present(aiGatewayPlan(config)).tokenReasons.length, 1);
 });
 
 test("treats a differently-cased account ID as the same account", async () => {
@@ -456,11 +626,11 @@ test("treats a differently-cased account ID as the same account", async () => {
 
   // Same account written two ways, which the hex pattern accepts: the binding reaches this gateway,
   // so no CF_AI_GATEWAY_USE_BINDING opt-out and no token.
-  assert.equal(generated.workshop.vars!.CF_AI_GATEWAY_ACCOUNT_ID, validConfig.accountId);
-  assert.equal(generated.workshop.vars!.CF_AI_GATEWAY_USE_BINDING, undefined);
+  assert.equal(present(generated.workshop.vars).CF_AI_GATEWAY_ACCOUNT_ID, validConfig.accountId);
+  assert.equal(present(generated.workshop.vars).CF_AI_GATEWAY_USE_BINDING, undefined);
   assert.equal(generated.workshop.secrets, undefined);
-  assert.equal(aiGatewayPlan(config)!.crossAccount, false);
-  assert.deepEqual(aiGatewayPlan(config)!.tokenReasons, []);
+  assert.equal(present(aiGatewayPlan(config)).crossAccount, false);
+  assert.deepEqual(present(aiGatewayPlan(config)).tokenReasons, []);
 });
 
 test("requires a token for the google provider", async () => {
@@ -469,8 +639,8 @@ test("requires a token for the google provider", async () => {
 
   assert.deepEqual(generated.workshop.secrets, { required: ["CF_AI_GATEWAY_API_TOKEN"] });
   // Same account, so the binding still carries every other provider.
-  assert.equal(generated.workshop.vars!.CF_AI_GATEWAY_USE_BINDING, undefined);
-  assert.match(aiGatewayPlan(config)!.tokenReasons[0], /google/i);
+  assert.equal(present(generated.workshop.vars).CF_AI_GATEWAY_USE_BINDING, undefined);
+  assert.match(present(aiGatewayPlan(config)).tokenReasons[0], /google/iu);
 });
 
 test("omits disabled backend error reporting", async () => {
@@ -481,22 +651,24 @@ test("omits disabled backend error reporting", async () => {
   const generated = generateConfigs(config, await baseConfigs());
 
   assert.equal(generated.errorReporter, undefined);
-  assert.equal(generated.workshop.services!.some(
-    (service) => service.binding === "ERROR_REPORTER"), false);
+  assert.equal(
+    present(generated.workshop.services).some((service) => service.binding === "ERROR_REPORTER"),
+    false,
+  );
 });
 
 test("omits dormant AI Gateway configuration", async () => {
   const config = variant((c) => {
     c.aiGateway = {
+      accountId: "<AI_GATEWAY_ACCOUNT_ID>",
       enabled: false,
       name: "<AI_GATEWAY_NAME>",
-      accountId: "<AI_GATEWAY_ACCOUNT_ID>",
       providers: [],
     };
   });
 
   const generated = generateConfigs(config, await baseConfigs());
-  const vars = generated.workshop.vars!;
+  const vars = present(generated.workshop.vars);
 
   assert.equal(vars.CF_AI_GATEWAY, undefined);
   assert.equal(vars.CF_AI_GATEWAY_ACCOUNT_ID, undefined);
@@ -540,9 +712,9 @@ test("generates binding-only storage for automatic provisioning", async () => {
   const config = variant((c) => {
     c.context.kvNamespaceId = null;
     c.resources = {
-      blueprintsKvNamespaceId: null,
       avatarsKvNamespaceId: null,
       blueprintContentBucket: null,
+      blueprintsKvNamespaceId: null,
     };
   });
 
@@ -598,7 +770,7 @@ test("passes VITE_CF_ACCESS_MODE explicitly rather than inheriting it", () => {
   const withAccessMode = buildCommands(validConfig).filter(({ env }) => env);
   assert.deepEqual(withAccessMode.map(({ env }) => env), [{ VITE_CF_ACCESS_MODE: "true" }]);
   // It has to reach the frontend, which inlines it into the bundle, and nothing else.
-  assert.match(withAccessMode[0].args.join(" "), /@gadgets\/workshop-frontend/);
+  assert.match(withAccessMode[0].args.join(" "), /@gadgets\/workshop-frontend/u);
 });
 
 test("builds the frontend before the router", () => {
@@ -606,7 +778,7 @@ test("builds the frontend before the router", () => {
   const frontend = order.findIndex((command) => command.includes("workshop-frontend"));
   const router = order.findIndex((command) => command.includes("@gadgets/router"));
   // The router deploy picks up ../workshop-frontend/dist as its assets.
-  assert.ok(frontend >= 0 && router >= 0 && frontend < router, order.join("\n"));
+  assert.ok(frontend !== -1 && router !== -1 && frontend < router, order.join("\n"));
 });
 
 test("skips the Error Reporter build when error reporting is disabled", () => {
